@@ -439,6 +439,76 @@ async function showUpload() {
     }
 }
 
+// =========================================================
+// SPLASH SCREEN
+// Add this function at the TOP of app.js (before everything else)
+// Then call showSplash() inside window.onload instead of init()
+// =========================================================
+
+function showSplash() {
+    const app = document.getElementById('app');
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'none';
+
+    app.style.display = 'flex';
+    app.style.alignItems = 'center';
+    app.style.justifyContent = 'center';
+    app.style.minHeight = '100vh';
+    app.style.padding = '0';
+
+    app.innerHTML = `
+        <div id="splash-screen" style="
+            position:fixed;
+            top:0;left:0;
+            width:100%;height:100%;
+            background:#000000;
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            justify-content:center;
+            z-index:9999;
+            opacity:1;
+            transition:opacity 0.5s ease;
+        ">
+            <!-- Blue e logo -->
+            <div id="splash-logo" style="opacity:0;transform:scale(0.8);transition:opacity 0.6s ease,transform 0.6s ease;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="90" height="90">
+                    <path d="M 380 235 C 372 188 344 152 304 132 C 264 112 216 112 176 130 C 134 149 106 185 98 228 C 89 274 103 321 132 353 C 162 387 206 404 250 400 C 288 396 322 378 344 348 C 358 330 364 308 360 286" fill="none" stroke="#0866ff" stroke-width="55" stroke-linecap="round"/>
+                    <path d="M 96 250 L 362 235" fill="none" stroke="#0866ff" stroke-width="55" stroke-linecap="round"/>
+                </svg>
+            </div>
+
+            <!-- App name -->
+            <div id="splash-name" style="opacity:0;transition:opacity 0.6s ease 0.3s;margin-top:16px;">
+                <span style="color:white;font-size:28px;font-weight:800;font-family:Helvetica,Arial,sans-serif;letter-spacing:1px;">eMake</span>
+            </div>
+
+            <!-- Tagline -->
+            <div id="splash-tag" style="opacity:0;transition:opacity 0.6s ease 0.5s;margin-top:6px;">
+                <span style="color:#555;font-size:13px;font-family:Helvetica,Arial,sans-serif;">eFootball Community</span>
+            </div>
+        </div>
+    `;
+
+    // Animate in
+    setTimeout(() => {
+        document.getElementById('splash-logo').style.opacity = '1';
+        document.getElementById('splash-logo').style.transform = 'scale(1)';
+        document.getElementById('splash-name').style.opacity = '1';
+        document.getElementById('splash-tag').style.opacity = '1';
+    }, 100);
+
+    // Fade out after 2 seconds then init app
+    setTimeout(() => {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+            splash.style.opacity = '0';
+            setTimeout(() => {
+                init();
+            }, 500);
+        }
+    }, 2000);
+}
 //--------------------------------------------------//
 
 async function showHome() {
@@ -1931,6 +2001,7 @@ window.showEditProfile = showEditProfile;
 window.showSettings = showSettings;
 window.showFriendlies = showFriendlies;
 window.loadMediaTab = loadMediaTab;
+window.showSplash = showSplash;
 
 async function init() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1938,8 +2009,16 @@ async function init() {
     router(state.user ? 'home' : 'login');
 }
 
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+        .then(() => console.log('SW registered'))
+        .catch(err => console.log('SW error:', err));
+}
+
 window.onload = () => {
-    init();
+    showSplash();
 };
 window.state = state;
 window.router = router;
