@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>eMake | eFootball Community</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="app"></div>
+    
+    <nav id="bottom-nav" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 60px; background: white; border-top: 1px solid #dbdbdb; justify-content: space-around; align-items: center; z-index: 1000;">
+
+  <button onclick="router('home')" id="nav-home" style="background:none; border:none; outline:none; cursor:pointer; padding:10px 30px; display:flex; align-items:center; justify-content:center; -webkit-tap-highlight-color:transparent;">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+      <path d="M9 21V12h6v9"/>
+    </svg>
+  </button>
+
+  <button onclick="router('upload')" id="nav-upload" style="background:none; border:none; outline:none; cursor:pointer; padding:10px 30px; display:flex; align-items:center; justify-content:center; -webkit-tap-highlight-color:transparent;">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="4"/>
+      <line x1="12" y1="8" x2="12" y2="16"/>
+      <line x1="8" y1="12" x2="16" y2="12"/>
+    </svg>
+  </button>
+
+  <button onclick="router('profile')" id="nav-profile" style="background:none; border:none; outline:none; cursor:pointer; padding:10px 30px; display:flex; align-items:center; justify-content:center; -webkit-tap-highlight-color:transparent;">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="8" r="4"/>
+      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+    </svg>
+  </button>
+
+</nav>
+  
+
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
