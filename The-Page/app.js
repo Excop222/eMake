@@ -3644,13 +3644,21 @@ window.showHome = showHome;
 window.showNotificationSettings = showNotificationSettings;
 window.showForgotPassword = showForgotPassword;
 window.showResetPassword = showResetPassword;
+window.showLogin = showLogin;
 
 
 async function init() {
+    // Listen for Supabase auth events
+    supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+            showResetPassword();
+            return;
+        }
+    });
+
     const { data: { session } } = await supabase.auth.getSession();
     state.user = session?.user || null;
 
-    // Check if user is coming back from password reset email
     const hash = window.location.hash;
     if (hash && hash.includes('access_token') && hash.includes('type=recovery')) {
         showResetPassword();
