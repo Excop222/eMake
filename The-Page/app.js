@@ -3757,10 +3757,6 @@ supabase.auth.onAuthStateChange((event, session) => {
         showResetPassword();
         return;
     }
-    if (event === 'SIGNED_OUT') {
-        state.user = null;
-        router('login');
-    }
 });
 
 window.onload = () => {
