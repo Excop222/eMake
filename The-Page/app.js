@@ -2284,18 +2284,50 @@ async function showAccountSettings() {
         btn.disabled = false;
     };
 
-    // Delete Account
-    document.getElementById('delete-account-btn').onclick = async () => {
-        if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return;
-        if (!confirm('Last warning! All your posts and data will be deleted forever.')) return;
+document.getElementById('delete-account-btn').onclick = async () => {
+    if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return;
+    if (!confirm('Last warning! All your posts and data will be deleted forever.')) return;
 
-        // Delete posts first
-        await supabase.from('posts').delete().eq('user_id', state.user.id);
-        await supabase.from('profiles').delete().eq('id', state.user.id);
-        await supabase.auth.signOut();
-        state.user = null;
-        router('login');
-    };
+    // Delete avatar from storage
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', state.user.id)
+        .single();
+
+    if (profile?.avatar_url) {
+        const path = profile.avatar_url.split('/avatars/')[1];
+        if (path) await supabase.storage.from('avatars').remove([path]);
+    }
+
+    // Delete post media from storage
+    const { data: posts } = await supabase
+        .from('posts')
+        .select('media_url')
+        .eq('user_id', state.user.id);
+
+    if (posts && posts.length > 0) {
+        const paths = posts
+            .filter(p => p.media_url)
+            .map(p => p.media_url.split('/content/')[1])
+            .filter(Boolean);
+        if (paths.length > 0) await supabase.storage.from('content').remove(paths);
+    }
+}
+// Delete posts and profile rows
+    await supabase.from('posts').delete().eq('user_id', state.user.id);
+    await supabase.from('profiles').delete().eq('id', state.user.id);
+
+    // Delete auth user
+    await supabase.rpc('delete_user');
+
+    // Sign out
+    await supabase.auth.signOut();
+    state.user = null;
+    router('login');
+    
+    await supabase.rpc('delete_user');
+await supabase.auth.signOut();
 }
 
 
