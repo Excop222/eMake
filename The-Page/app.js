@@ -3648,14 +3648,6 @@ window.showLogin = showLogin;
 
 
 async function init() {
-    // Listen for Supabase auth events
-    supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'PASSWORD_RECOVERY') {
-            showResetPassword();
-            return;
-        }
-    });
-
     const { data: { session } } = await supabase.auth.getSession();
     state.user = session?.user || null;
 
@@ -3679,8 +3671,17 @@ if ('serviceWorker' in navigator) {
         .catch(err => console.log('SW error:', err));
 }
 
+// Listen for password recovery BEFORE anything loads
+supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+        showResetPassword();
+        return;
+    }
+});
+
 window.onload = () => {
     showSplash();
 };
+
 window.state = state;
 window.router = router;
