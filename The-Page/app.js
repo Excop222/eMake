@@ -154,7 +154,12 @@ function showLogin() {
         <div class="auth-card">
             <h1>eMake</h1>
             <input type="email" id="login-email" placeholder="Email address or WhatsApp">
-            <input type="password" id="login-pass" placeholder="Password">
+          <div style="position:relative;width:100%;">
+    <input type="password" id="login-pass" placeholder="Password" style="width:100%;box-sizing:border-box;padding-right:44px;">
+    <button onclick="togglePasswordVisibility('login-pass', 'eye-login')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;">
+        <svg id="eye-login" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><eye xmlns="http://www.w3.org/2000/svg"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+</div>
             <button class="login-btn" id="do-login">Log In</button>
            <p class="link-text" onclick="showForgotPassword()" style="cursor:pointer;">Forgotten password?</p>
             <div class="divider"></div>
@@ -212,7 +217,12 @@ function showSignup() {
             <input type="email" id="s-email" placeholder="Email address">
             <input type="number" id="s-whatsapp" placeholder="WhatsApp number">
             <input type="text" id="s-location" placeholder="Location">
-            <input type="password" id="s-pass" placeholder="New password">
+            <div style="position:relative;width:100%;">
+    <input type="password" id="s-pass" placeholder="New password" style="width:100%;box-sizing:border-box;padding-right:44px;">
+    <button onclick="togglePasswordVisibility('s-pass', 'eye-signup')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;">
+        <svg id="eye-signup" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+</div>
             
             <div class="label-text">Birthday</div>
             <div class="input-row">
@@ -846,13 +856,38 @@ function setupVideoAutoplay() {
 
 
     // Load first batch
-    const { data: firstPosts, error } = await fetchPosts(0);
-    if (error) {
+    // Load first batch — show cache instantly if available
+const CACHE_KEY = 'emake_feed_cache';
+const cached = localStorage.getItem(CACHE_KEY);
+
+if (cached) {
+    const cachedPosts = JSON.parse(cached);
+    const feedContainer = document.getElementById('feed-container');
+    if (feedContainer && cachedPosts.length > 0) {
+        feedContainer.innerHTML = cachedPosts.map(buildPostCard).join('');
+        wireEvents();
+        setupVideoAutoplay();
+        const cachedIds = cachedPosts.map(p => p.id);
+        loadLikeCounts(cachedIds);
+        loadCommentCounts(cachedIds);
+    }
+}
+
+// Now fetch fresh from Supabase in background
+const { data: firstPosts, error } = await fetchPosts(0);
+if (error) {
+    if (!cached) {
         app.innerHTML = `<div style="text-align:center;padding:40px;color:#606770;">Failed to load feed.<br><small>${error.message}</small></div>`;
         return;
     }
-    if (firstPosts.length < perPage) hasMore = false;
+    // If we have cache just show it silently
+    return;
+}
+if (firstPosts.length < perPage) hasMore = false;
 
+// Save fresh posts to cache
+localStorage.setItem(CACHE_KEY, JSON.stringify(firstPosts));
+if (!cached) {
     app.innerHTML = `
         <div style="width:100%;max-width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
 
@@ -892,6 +927,8 @@ function setupVideoAutoplay() {
 
         </div>
     `;
+}
+
 
     wireEvents();
     setupVideoAutoplay();
@@ -3543,12 +3580,22 @@ function showResetPassword() {
             </p>
 
             <!-- New password -->
-            <input type="password" id="new-password" placeholder="New password"
-                style="width:100%;padding:14px 16px;border:1.5px solid #dddfe2;border-radius:12px;font-size:15px;outline:none;font-family:Helvetica,Arial,sans-serif;box-sizing:border-box;margin-bottom:12px;color:#1c1e21;">
+           <div style="position:relative;width:100%;margin-bottom:12px;">
+    <input type="password" id="new-password" placeholder="New password"
+        style="width:100%;padding:14px 44px 14px 16px;border:1.5px solid #dddfe2;border-radius:12px;font-size:15px;outline:none;font-family:Helvetica,Arial,sans-serif;box-sizing:border-box;color:#1c1e21;">
+    <button onclick="togglePasswordVisibility('new-password', 'eye-new')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;">
+        <svg id="eye-new" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+</div>
 
             <!-- Confirm password -->
-            <input type="password" id="confirm-new-password" placeholder="Confirm new password"
-                style="width:100%;padding:14px 16px;border:1.5px solid #dddfe2;border-radius:12px;font-size:15px;outline:none;font-family:Helvetica,Arial,sans-serif;box-sizing:border-box;margin-bottom:12px;color:#1c1e21;">
+            <div style="position:relative;width:100%;margin-bottom:12px;">
+    <input type="password" id="confirm-new-password" placeholder="Confirm new password"
+        style="width:100%;padding:14px 44px 14px 16px;border:1.5px solid #dddfe2;border-radius:12px;font-size:15px;outline:none;font-family:Helvetica,Arial,sans-serif;box-sizing:border-box;color:#1c1e21;">
+    <button onclick="togglePasswordVisibility('confirm-new-password', 'eye-confirm')" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;">
+        <svg id="eye-confirm" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+</div>
 
             <!-- Status -->
             <div id="new-pass-status" style="display:none;padding:12px;border-radius:10px;font-size:13px;text-align:center;margin-bottom:12px;font-family:Helvetica,Arial,sans-serif;"></div>
@@ -3620,6 +3667,18 @@ function showResetPassword() {
 }
 
 
+function togglePasswordVisibility(inputId, eyeId) {
+    const input = document.getElementById(inputId);
+    const eye = document.getElementById(eyeId);
+    if (input.type === 'password') {
+        input.type = 'text';
+        eye.setAttribute('stroke', '#0866ff');
+    } else {
+        input.type = 'password';
+        eye.setAttribute('stroke', '#aaa');
+    }
+}
+
 
 
 //---- Zone 7: log out function and others-----------
@@ -3645,6 +3704,7 @@ window.showNotificationSettings = showNotificationSettings;
 window.showForgotPassword = showForgotPassword;
 window.showResetPassword = showResetPassword;
 window.showLogin = showLogin;
+window.togglePasswordVisibility = togglePasswordVisibility;
 
 
 async function init() {
