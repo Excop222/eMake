@@ -3611,10 +3611,10 @@ function showResetPassword() {
             status.style.display = 'block';
 
             setTimeout(async () => {
-                const { data: { session } } = await supabase.auth.getSession();
-                state.user = session?.user || null;
-                router(state.user ? 'home' : 'login');
-            }, 1500);
+    await supabase.auth.signOut();
+    state.user = null;
+    router('login');
+}, 1500);
         }
     };
 }
@@ -3647,21 +3647,22 @@ window.showResetPassword = showResetPassword;
 
 
 async function init() {
+    const { data: { session } } = await supabase.auth.getSession();
+    state.user = session?.user || null;
+
+    // Check if user is coming back from password reset email
     const hash = window.location.hash;
     if (hash && hash.includes('access_token') && hash.includes('type=recovery')) {
         showResetPassword();
         return;
     }
-    const { data: { session } } = await supabase.auth.getSession();
-    state.user = session?.user || null;
-    router(state.user ? 'home' : 'login');
-    if (state.user) checkUnreadBadge();
-    if (state.user) {
-    checkUnreadBadge();
-    checkNotifBadge();  
-}
-}
 
+    router(state.user ? 'home' : 'login');
+    if (state.user) {
+        checkUnreadBadge();
+        checkNotifBadge();
+    }
+}
 
 // Register service worker
 if ('serviceWorker' in navigator) {
