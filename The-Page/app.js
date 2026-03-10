@@ -4,6 +4,96 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const supabase = createClient('https://ymxyuvqunsbrghaggdzg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteHl1dnF1bnNicmdoYWdnZHpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NjI4NDgsImV4cCI6MjA4ODAzODg0OH0.RrvwdPPff9P5FMuMXFss1TPvA13T523CHu38jiqEEkY');
 const app = document.getElementById('app');
 
+// --------------------------------------------------
+// --- MEDIA COMPRESSION UTILITY ---
+// --------------------------------------------------
+
+async function compressMedia(file) {
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+
+    // -----------------------------------------------------------------------
+    // VIDEO — can't compress in browser, just check size limit (50MB)
+    // -----------------------------------------------------------------------
+    if (isVideo) {
+        const maxSize = 50 * 1024 * 1024; // 50MB
+        if (file.size > maxSize) {
+            alert(`Video is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum allowed is 50MB. Please trim or compress the video first.`);
+            return null;
+        }
+        // Video is fine — return as is
+        return file;
+    }
+
+    // -----------------------------------------------------------------------
+    // IMAGE — compress to max 1080px width at 75% quality
+    // -----------------------------------------------------------------------
+    if (isImage) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (e) => {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1080;
+                    const MAX_HEIGHT = 1080;
+
+                    let width = img.width;
+                    let height = img.height;
+
+                    // Only downscale — never upscale small images
+                    if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+                        if (width > height) {
+                            height = Math.round((height * MAX_WIDTH) / width);
+                            width = MAX_WIDTH;
+                        } else {
+                            width = Math.round((width * MAX_HEIGHT) / height);
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Convert to blob at 75% quality
+                    canvas.toBlob(
+                        (blob) => {
+                            if (!blob) {
+                                // Fallback to original if compression fails
+                                resolve(file);
+                                return;
+                            }
+
+                            // Create a new File from the blob (keeps the filename)
+                            const compressedFile = new File([blob], file.name, {
+                                type: 'image/jpeg',
+                                lastModified: Date.now()
+                            });
+
+                            console.log(
+                                `Compressed: ${(file.size / 1024).toFixed(0)}KB → ${(compressedFile.size / 1024).toFixed(0)}KB`
+                            );
+
+                            resolve(compressedFile);
+                        },
+                        'image/jpeg',
+                        0.75 // 75% quality
+                    );
+                };
+            };
+        });
+    }
+
+    // Not an image or video — return as is
+    return file;
+}
+
+
 // --- ZONE 2: STATE ---
 let state = {
     user: null,
@@ -22,6 +112,7 @@ function router(view) {
     else if (view === 'profile') showProfile(state.user.id);
     else if (view === 'login') showLogin();
     else if (view === 'signup') showSignup();
+    else if (view === 'messages') showMessenger();
 
     setActiveNav(view); 
 }
@@ -53,13 +144,19 @@ function showSpinner() {
 // -------------------------------------------------------------------------
 
 function showLogin() {
+    app.style.display = 'flex';
+    app.style.padding = '20px';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'center';
+    app.style.justifyContent = 'center';
+    
     app.innerHTML = `
         <div class="auth-card">
             <h1>eMake</h1>
             <input type="email" id="login-email" placeholder="Email address or WhatsApp">
             <input type="password" id="login-pass" placeholder="Password">
             <button class="login-btn" id="do-login">Log In</button>
-            <p class="link-text">Forgotten password?</p>
+           <p class="link-text" onclick="showForgotPassword()" style="cursor:pointer;">Forgotten password?</p>
             <div class="divider"></div>
             <button class="signup-btn" id="go-signup">Create New Account</button>
         </div>
@@ -96,6 +193,12 @@ function showLogin() {
 // -------------------------------------------------------------------------
 
 function showSignup() {
+    app.style.display = 'flex';
+    app.style.padding = '20px';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'center';
+    app.style.justifyContent = 'center';
+    
     app.innerHTML = `
         <div class="auth-card" style="max-width: 450px; text-align: left;">
             <h2 style="margin: 0; font-size: 28px;">Sign Up</h2>
@@ -391,11 +494,13 @@ async function showUpload() {
 
             // Upload file to Supabase storage if exists
             if (selectedFile) {
-                const ext = selectedFile.name.split('.').pop();
-                const fileName = `${state.user.id}_${Date.now()}.${ext}`;
-                const { data: uploadData, error: uploadError } = await supabase.storage
-                    .from('content')
-                    .upload(fileName, selectedFile, { upsert: true });
+    const compressed = await compressMedia(selectedFile);
+    if (!compressed) return;
+    const ext = compressed.name.split('.').pop();
+    const fileName = `${state.user.id}_${Date.now()}.${ext}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('content')
+        .upload(fileName, compressed, { upsert: true });
 
                 if (uploadError) throw uploadError;
 
@@ -752,13 +857,17 @@ function setupVideoAutoplay() {
         <div style="width:100%;max-width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
 
             <!-- ONLY LOGO IS STICKY -->
-            <div style="position:sticky;top:0;z-index:100;background:white;border-bottom:1px solid #efefef;display:flex;justify-content:center;align-items:center;padding:10px 0;">
-                <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
-                    <circle cx="24" cy="24" r="22" fill="#0866ff"/>
-                    <path d="M14 24 C14 17 19 13 24 13 C30 13 34 17 34 23 C34 24 33 25 32 25 L14.5 25" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
-                    <path d="M14 24 C14 31 19 35 24 35 C28 35 31 33 33 30" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
-                </svg>
-            </div>
+            <div style="position:sticky;top:0;z-index:100;background:white;border-bottom:1px solid #efefef;display:flex;justify-content:space-between;align-items:center;padding:10px 16px;">
+    <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
+        <circle cx="24" cy="24" r="22" fill="#0866ff"/>
+        <path d="M14 24 C14 17 19 13 24 13 C30 13 34 17 34 23 C34 24 33 25 32 25 L14.5 25" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <path d="M14 24 C14 31 19 35 24 35 C28 35 31 33 33 30" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+    </svg>
+    <button onclick="showNotifications()" style="background:none;border:none;cursor:pointer;padding:4px;position:relative;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <div id="notif-badge" style="display:none;position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#e41e3f;border:1.5px solid white;"></div>
+    </button>
+</div>
 
             <!-- SCROLLS WITH FEED -->
             <div style="display:flex;align-items:center;gap:12px;padding:10px 16px 12px;border-bottom:1px solid #efefef;cursor:pointer;" id="quick-post-bar">
@@ -817,7 +926,6 @@ function setupVideoAutoplay() {
         isLoadingMore = false;
     }, { threshold: 0.1 }).observe(sentinel);
 }
-
 
 // -------------------------------------------------------------------------
 // --- COMMENTS BOTTOM SHEET + REAL LIKES ---
@@ -1054,6 +1162,13 @@ async function openComments(postId) {
         }
 
         cancelReply();
+        const { data: postData } = await supabase.from('posts').select('user_id').eq('id', postId).single();
+if (postData) {
+    const { data: prefData } = await supabase.from('privacy_settings').select('notif_comments').eq('user_id', postData.user_id).single();
+    if (!prefData || prefData.notif_comments !== false) {
+        createNotification(postData.user_id, 'comment', postId);
+    }
+}
 
         // Update comment count on post card
         const countEl = document.querySelector(`.comment-count-${postId}`);
@@ -1129,6 +1244,15 @@ async function toggleLike(postId, btn) {
         .from('likes')
         .insert({ user_id: state.user.id, story_id: postId });
     if (error) console.log('INSERT ERROR:', error.message);
+    
+// Notify post owner
+const { data: postData } = await supabase.from('posts').select('user_id').eq('id', postId).single();
+if (postData) {
+    const { data: prefData } = await supabase.from('privacy_settings').select('notif_likes').eq('user_id', postData.user_id).single();
+    if (!prefData || prefData.notif_likes !== false) {
+        createNotification(postData.user_id, 'like', postId);
+    }
+}
 }
 }
 
@@ -1292,19 +1416,19 @@ async function showProfile(userId) {
 
     // Bottom button
     const actionButton = isOwnProfile ? `
-        <div style="display:flex;gap:12px;padding:0 16px 16px;">
-            <button onclick="showEditProfile()" style="flex:1;padding:10px;border:1.5px solid #dddfe2;border-radius:10px;background:white;font-weight:700;font-size:14px;cursor:pointer;color:#1c1e21;">
-                Edit Profile
-            </button>
-            <div style="flex:1;"></div>
-        </div>` : waNum ? `
-        <div style="display:flex;gap:12px;padding:0 16px 16px;">
-            <button onclick="window.open('https://wa.me/${waNum}','_blank')" style="flex:1;padding:10px;border:none;border-radius:10px;background:#25D366;font-weight:700;font-size:14px;cursor:pointer;color:white;display:flex;align-items:center;justify-content:center;gap:8px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.821.487 3.53 1.338 5L2 22l5.112-1.337A9.955 9.955 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="none" stroke="white" stroke-width="1.5"/></svg>
-                Message
-            </button>
-            <div style="flex:1;"></div>
-        </div>` : '';
+    <div style="display:flex;gap:12px;padding:0 16px 16px;">
+        <button onclick="showEditProfile()" style="flex:1;padding:10px;border:1.5px solid #dddfe2;border-radius:10px;background:white;font-weight:700;font-size:14px;cursor:pointer;color:#1c1e21;">
+            Edit Profile
+        </button>
+        <div style="flex:1;"></div>
+    </div>` : `
+    <div style="display:flex;gap:12px;padding:0 16px 16px;">
+        <button onclick="openChat('${userId}')" style="flex:1;padding:10px;border:none;border-radius:10px;background:#0866ff;font-weight:700;font-size:14px;cursor:pointer;color:white;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Message
+        </button>
+        <div style="flex:1;"></div>
+    </div>`;
 
     app.innerHTML = `
         <div style="width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
@@ -1745,7 +1869,9 @@ async function showEditProfile() {
         try {
             const ext = file.name.split('.').pop();
             const fileName = `avatar_${state.user.id}.${ext}`;
-            await supabase.storage.from('avatars').upload(fileName, file, { upsert: true });
+            const compressed = await compressMedia(file);
+if (!compressed) return;
+await supabase.storage.from('avatars').upload(fileName, compressed, { upsert: true });
             const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
 
             // Update avatar circle preview
@@ -1857,13 +1983,12 @@ async function showFriendlies() {
             ? `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
             : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
 
-        const messageBtn = waNum ? `
-            <button onclick="window.open('https://wa.me/${waNum}','_blank')"
-                style="background:#25D366;color:white;border:none;cursor:pointer;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.821.487 3.53 1.338 5L2 22l5.112-1.337A9.955 9.955 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="none" stroke="white" stroke-width="1.5"/></svg>
-                Message
-            </button>` : '';
-
+        const messageBtn = `
+    <button onclick="openChat('${user.id}')"
+        style="background:#0866ff;color:white;border:none;cursor:pointer;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Message
+    </button>`;
         return `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f5f5;">
                 <div onclick="showProfile('${user.id}')" style="width:46px;height:46px;border-radius:50%;overflow:hidden;background:#e4e6ea;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;">
@@ -1951,25 +2076,25 @@ function showSettings() {
             <!-- Settings items -->
             <div style="margin:16px;background:white;border-radius:16px;overflow:hidden;">
 
-                <div style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:14px;cursor:pointer;">
+                <div onclick="showAccountSettings()" style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:14px;cursor:pointer;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                     <span style="font-size:15px;color:#1c1e21;">Account</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" style="margin-left:auto;"><polyline points="9 18 15 12 9 6"/></svg>
                 </div>
 
-                <div style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:14px;cursor:pointer;">
+                <div onclick="showNotificationSettings()" style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:14px;cursor:pointer;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                     <span style="font-size:15px;color:#1c1e21;">Notifications</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" style="margin-left:auto;"><polyline points="9 18 15 12 9 6"/></svg>
                 </div>
 
-                <div style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:14px;cursor:pointer;">
+                <div onclick="showPrivacySettings()" style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:14px;cursor:pointer;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     <span style="font-size:15px;color:#1c1e21;">Privacy</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" style="margin-left:auto;"><polyline points="9 18 15 12 9 6"/></svg>
                 </div>
 
-                <div style="padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer;">
+                <div onclick="showMoreSettings()" style="padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     <span style="font-size:15px;color:#1c1e21;">More settings</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" style="margin-left:auto;"><polyline points="9 18 15 12 9 6"/></svg>
@@ -1995,6 +2120,1508 @@ function showSettings() {
     };
 }
 
+// --------------------------------------------------
+// --- SHOW ACCOUNT SETTINGS ---
+// --------------------------------------------------
+
+async function showAccountSettings() {
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'none';
+
+    app.style.display = 'block';
+    app.style.padding = '0';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'unset';
+    app.style.justifyContent = 'unset';
+
+    // Fetch current user email from supabase auth
+    const { data: { user } } = await supabase.auth.getUser();
+    const email = user?.email || '';
+
+    app.innerHTML = `
+        <div style="width:100%;min-height:100vh;background:#f0f2f5;font-family:Helvetica,Arial,sans-serif;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:16px;padding:16px;background:white;border-bottom:1px solid #efefef;">
+                <button onclick="showSettings()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span style="font-weight:700;font-size:18px;color:#1c1e21;">Account</span>
+            </div>
+
+            <!-- Change Email -->
+            <div style="margin:16px 16px 0;background:white;border-radius:16px;overflow:hidden;">
+                <div style="padding:12px 16px;border-bottom:1px solid #efefef;">
+                    <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#606770;text-transform:uppercase;">Email Address</p>
+                    <input id="account-email" type="email" value="${email}"
+                        style="width:100%;border:none;outline:none;font-size:15px;color:#1c1e21;background:transparent;font-family:Helvetica,Arial,sans-serif;padding:4px 0;">
+                </div>
+                <button id="save-email-btn" style="width:100%;padding:14px 16px;background:none;border:none;cursor:pointer;font-size:15px;font-weight:700;color:#0866ff;text-align:left;">
+                    Save Email
+                </button>
+            </div>
+
+            <!-- Change Password -->
+            <div style="margin:12px 16px 0;background:white;border-radius:16px;overflow:hidden;">
+                <div style="padding:12px 16px;border-bottom:1px solid #efefef;">
+                    <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#606770;text-transform:uppercase;">New Password</p>
+                    <input id="account-password" type="password" placeholder="Enter new password"
+                        style="width:100%;border:none;outline:none;font-size:15px;color:#1c1e21;background:transparent;font-family:Helvetica,Arial,sans-serif;padding:4px 0;">
+                </div>
+                <div style="padding:12px 16px;border-bottom:1px solid #efefef;">
+                    <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:#606770;text-transform:uppercase;">Confirm Password</p>
+                    <input id="account-password-confirm" type="password" placeholder="Confirm new password"
+                        style="width:100%;border:none;outline:none;font-size:15px;color:#1c1e21;background:transparent;font-family:Helvetica,Arial,sans-serif;padding:4px 0;">
+                </div>
+                <button id="save-password-btn" style="width:100%;padding:14px 16px;background:none;border:none;cursor:pointer;font-size:15px;font-weight:700;color:#0866ff;text-align:left;">
+                    Save Password
+                </button>
+            </div>
+
+            <!-- Danger Zone -->
+            <div style="margin:12px 16px 0;background:white;border-radius:16px;overflow:hidden;">
+                <button id="delete-account-btn" style="width:100%;padding:16px;background:none;border:none;cursor:pointer;font-size:15px;font-weight:700;color:#e41e3f;text-align:left;">
+                    Delete Account
+                </button>
+            </div>
+
+            <!-- Status message -->
+            <div id="account-status" style="margin:12px 16px;font-size:13px;text-align:center;display:none;"></div>
+
+        </div>
+    `;
+
+    function showStatus(msg, isError = false) {
+        const el = document.getElementById('account-status');
+        el.textContent = msg;
+        el.style.color = isError ? '#e41e3f' : '#25a244';
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 3000);
+    }
+
+    // Save Email
+    document.getElementById('save-email-btn').onclick = async () => {
+        const btn = document.getElementById('save-email-btn');
+        const newEmail = document.getElementById('account-email').value.trim();
+        if (!newEmail) return showStatus('Please enter an email', true);
+
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+
+        const { error } = await supabase.auth.updateUser({ email: newEmail });
+
+        if (error) {
+            showStatus(error.message, true);
+        } else {
+            showStatus('Confirmation email sent! Check your inbox.');
+        }
+
+        btn.textContent = 'Save Email';
+        btn.disabled = false;
+    };
+
+    // Save Password
+    document.getElementById('save-password-btn').onclick = async () => {
+        const btn = document.getElementById('save-password-btn');
+        const newPassword = document.getElementById('account-password').value;
+        const confirmPassword = document.getElementById('account-password-confirm').value;
+
+        if (!newPassword) return showStatus('Please enter a password', true);
+        if (newPassword.length < 6) return showStatus('Password must be at least 6 characters', true);
+        if (newPassword !== confirmPassword) return showStatus('Passwords do not match', true);
+
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+        if (error) {
+            showStatus(error.message, true);
+        } else {
+            showStatus('Password updated successfully!');
+            document.getElementById('account-password').value = '';
+            document.getElementById('account-password-confirm').value = '';
+        }
+
+        btn.textContent = 'Save Password';
+        btn.disabled = false;
+    };
+
+    // Delete Account
+    document.getElementById('delete-account-btn').onclick = async () => {
+        if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return;
+        if (!confirm('Last warning! All your posts and data will be deleted forever.')) return;
+
+        // Delete posts first
+        await supabase.from('posts').delete().eq('user_id', state.user.id);
+        await supabase.from('profiles').delete().eq('id', state.user.id);
+        await supabase.auth.signOut();
+        state.user = null;
+        router('login');
+    };
+}
+
+
+// -------------------------------------------------
+// --- SHOW NOTIFICATIONS SETTINGS ---
+// --------------------------------------------------
+
+async function showNotificationSettings() {
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'none';
+
+    app.style.display = 'block';
+    app.style.padding = '0';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'unset';
+    app.style.justifyContent = 'unset';
+
+    // Show spinner while loading
+    app.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;">
+            <div class="spinner"></div>
+        </div>
+    `;
+
+    // Fetch existing preferences
+    const { data: prefs } = await supabase
+        .from('privacy_settings')
+        .select('notif_likes, notif_comments, notif_messages')
+        .eq('user_id', state.user.id)
+        .single();
+
+    // Defaults are all true
+    const notifLikes = prefs?.notif_likes ?? true;
+    const notifComments = prefs?.notif_comments ?? true;
+    const notifMessages = prefs?.notif_messages ?? true;
+
+    app.innerHTML = `
+        <div style="width:100%;min-height:100vh;background:#f0f2f5;font-family:Helvetica,Arial,sans-serif;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:16px;padding:16px;background:white;border-bottom:1px solid #efefef;">
+                <button onclick="showSettings()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span style="font-weight:700;font-size:18px;color:#1c1e21;">Notifications</span>
+            </div>
+
+            <!-- Description -->
+            <p style="margin:16px 16px 8px;font-size:12px;color:#aaa;text-transform:uppercase;font-weight:700;">In-app notifications</p>
+
+            <!-- Toggles -->
+            <div style="margin:0 16px;background:white;border-radius:16px;overflow:hidden;">
+
+                <!-- Likes -->
+                <div style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+                    <div style="flex:1;">
+                        <p style="margin:0 0 3px;font-size:15px;font-weight:700;color:#1c1e21;">Likes</p>
+                        <p style="margin:0;font-size:13px;color:#606770;">Notify when someone likes your post</p>
+                    </div>
+                    <div id="toggle-notif-likes" data-on="${notifLikes}" onclick="toggleNotifSetting('likes')"
+                        style="width:51px;height:31px;border-radius:20px;background:${notifLikes ? '#0866ff' : '#e4e6ea'};cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;">
+                        <div id="toggle-notif-likes-knob"
+                            style="position:absolute;top:3px;left:${notifLikes ? '23px' : '3px'};width:25px;height:25px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:left 0.2s;"></div>
+                    </div>
+                </div>
+
+                <!-- Comments -->
+                <div style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+                    <div style="flex:1;">
+                        <p style="margin:0 0 3px;font-size:15px;font-weight:700;color:#1c1e21;">Comments</p>
+                        <p style="margin:0;font-size:13px;color:#606770;">Notify when someone comments on your post</p>
+                    </div>
+                    <div id="toggle-notif-comments" data-on="${notifComments}" onclick="toggleNotifSetting('comments')"
+                        style="width:51px;height:31px;border-radius:20px;background:${notifComments ? '#0866ff' : '#e4e6ea'};cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;">
+                        <div id="toggle-notif-comments-knob"
+                            style="position:absolute;top:3px;left:${notifComments ? '23px' : '3px'};width:25px;height:25px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:left 0.2s;"></div>
+                    </div>
+                </div>
+
+                <!-- Messages -->
+                <div style="padding:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+                    <div style="flex:1;">
+                        <p style="margin:0 0 3px;font-size:15px;font-weight:700;color:#1c1e21;">Messages</p>
+                        <p style="margin:0;font-size:13px;color:#606770;">Notify when someone sends you a message</p>
+                    </div>
+                    <div id="toggle-notif-messages" data-on="${notifMessages}" onclick="toggleNotifSetting('messages')"
+                        style="width:51px;height:31px;border-radius:20px;background:${notifMessages ? '#0866ff' : '#e4e6ea'};cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;">
+                        <div id="toggle-notif-messages-knob"
+                            style="position:absolute;top:3px;left:${notifMessages ? '23px' : '3px'};width:25px;height:25px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:left 0.2s;"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Status -->
+            <div id="notif-settings-status" style="margin:12px 16px;font-size:13px;text-align:center;display:none;"></div>
+
+        </div>
+    `;
+
+    window.toggleNotifSetting = async (type) => {
+        const toggleEl = document.getElementById(`toggle-notif-${type}`);
+        const knobEl = document.getElementById(`toggle-notif-${type}-knob`);
+
+        const isOn = toggleEl.dataset.on === 'true';
+        const newVal = !isOn;
+
+        // Update UI immediately
+        toggleEl.dataset.on = newVal;
+        toggleEl.style.background = newVal ? '#0866ff' : '#e4e6ea';
+        knobEl.style.left = newVal ? '23px' : '3px';
+
+        // Build update object
+        const updateObj = {};
+        if (type === 'likes') updateObj.notif_likes = newVal;
+        if (type === 'comments') updateObj.notif_comments = newVal;
+        if (type === 'messages') updateObj.notif_messages = newVal;
+
+        const { error } = await supabase
+            .from('privacy_settings')
+            .upsert({ user_id: state.user.id, ...updateObj }, { onConflict: 'user_id' });
+
+        if (error) {
+            // Revert on error
+            toggleEl.dataset.on = isOn;
+            toggleEl.style.background = isOn ? '#0866ff' : '#e4e6ea';
+            knobEl.style.left = isOn ? '23px' : '3px';
+
+            const status = document.getElementById('notif-settings-status');
+            status.textContent = 'Failed to save. Try again.';
+            status.style.color = '#e41e3f';
+            status.style.display = 'block';
+            setTimeout(() => status.style.display = 'none', 3000);
+        }
+    };
+}
+
+
+// --------------------------------------------------
+// --- SHOW PRIVACY SETTINGS ---
+// --------------------------------------------------
+
+async function showPrivacySettings() {
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'none';
+
+    app.style.display = 'block';
+    app.style.padding = '0';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'unset';
+    app.style.justifyContent = 'unset';
+
+    // Show spinner while loading
+    app.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;">
+            <div class="spinner"></div>
+        </div>
+    `;
+
+    // Fetch existing privacy settings for this user
+    const { data: privacy } = await supabase
+        .from('privacy_settings')
+        .select('*')
+        .eq('user_id', state.user.id)
+        .single();
+
+    // If no row yet, defaults are both true
+    const allowMatchRequests = privacy?.allow_match_requests ?? true;
+    const allowComments = privacy?.allow_comments ?? true;
+
+    app.innerHTML = `
+        <div style="width:100%;min-height:100vh;background:#f0f2f5;font-family:Helvetica,Arial,sans-serif;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:16px;padding:16px;background:white;border-bottom:1px solid #efefef;">
+                <button onclick="showSettings()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span style="font-weight:700;font-size:18px;color:#1c1e21;">Privacy</span>
+            </div>
+
+            <!-- Toggles -->
+            <div style="margin:16px;background:white;border-radius:16px;overflow:hidden;">
+
+                <!-- Match Requests -->
+                <div style="padding:16px;border-bottom:1px solid #efefef;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+                    <div style="flex:1;">
+                        <p style="margin:0 0 3px;font-size:15px;font-weight:700;color:#1c1e21;">Allow match requests</p>
+                        <p style="margin:0;font-size:13px;color:#606770;">Anyone can send you a match request</p>
+                    </div>
+                    <div id="toggle-match" data-on="${allowMatchRequests}" onclick="togglePrivacy('match')"
+                        style="width:51px;height:31px;border-radius:20px;background:${allowMatchRequests ? '#0866ff' : '#e4e6ea'};cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;">
+                        <div id="toggle-match-knob"
+                            style="position:absolute;top:3px;left:${allowMatchRequests ? '23px' : '3px'};width:25px;height:25px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:left 0.2s;"></div>
+                    </div>
+                </div>
+
+                <!-- Comments -->
+                <div style="padding:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+                    <div style="flex:1;">
+                        <p style="margin:0 0 3px;font-size:15px;font-weight:700;color:#1c1e21;">Allow comments</p>
+                        <p style="margin:0;font-size:13px;color:#606770;">Anyone can comment on your posts</p>
+                    </div>
+                    <div id="toggle-comments" data-on="${allowComments}" onclick="togglePrivacy('comments')"
+                        style="width:51px;height:31px;border-radius:20px;background:${allowComments ? '#0866ff' : '#e4e6ea'};cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;">
+                        <div id="toggle-comments-knob"
+                            style="position:absolute;top:3px;left:${allowComments ? '23px' : '3px'};width:25px;height:25px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:left 0.2s;"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Status -->
+            <div id="privacy-status" style="margin:0 16px;font-size:13px;text-align:center;color:#606770;display:none;"></div>
+
+        </div>
+    `;
+
+    // Toggle handler
+    window.togglePrivacy = async (type) => {
+        const toggleEl = document.getElementById(`toggle-${type}`);
+        const knobEl = document.getElementById(`toggle-${type}-knob`);
+
+        const isOn = toggleEl.dataset.on === 'true';
+        const newVal = !isOn;
+
+        // Update UI immediately
+        toggleEl.dataset.on = newVal;
+        toggleEl.style.background = newVal ? '#0866ff' : '#e4e6ea';
+        knobEl.style.left = newVal ? '23px' : '3px';
+
+        // Build update object
+        const updateObj = {};
+        if (type === 'match') updateObj.allow_match_requests = newVal;
+        if (type === 'comments') updateObj.allow_comments = newVal;
+
+        // Upsert — creates row if doesn't exist, updates if it does
+        const { error } = await supabase
+            .from('privacy_settings')
+            .upsert({ user_id: state.user.id, ...updateObj }, { onConflict: 'user_id' });
+
+        if (error) {
+            // Revert UI on error
+            toggleEl.dataset.on = isOn;
+            toggleEl.style.background = isOn ? '#0866ff' : '#e4e6ea';
+            knobEl.style.left = isOn ? '23px' : '3px';
+
+            const status = document.getElementById('privacy-status');
+            status.textContent = 'Failed to save. Try again.';
+            status.style.color = '#e41e3f';
+            status.style.display = 'block';
+            setTimeout(() => status.style.display = 'none', 3000);
+        }
+    };
+}
+
+// -------------------------------------------------
+// --- SHOW MORE SETTINGS ---
+// --------------------------------------------------
+
+function showMoreSettings() {
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'none';
+
+    app.style.display = 'block';
+    app.style.padding = '0';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'unset';
+    app.style.justifyContent = 'unset';
+
+    app.innerHTML = `
+        <div style="width:100%;min-height:100vh;background:#f0f2f5;font-family:Helvetica,Arial,sans-serif;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:16px;padding:16px;background:white;border-bottom:1px solid #efefef;">
+                <button onclick="showSettings()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span style="font-weight:700;font-size:18px;color:#1c1e21;">More Settings</span>
+            </div>
+
+            <!-- About eMake -->
+            <div style="margin:16px 16px 0;background:white;border-radius:16px;overflow:hidden;">
+
+                <!-- App logo + name -->
+                <div style="display:flex;flex-direction:column;align-items:center;padding:28px 16px 20px;border-bottom:1px solid #efefef;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="56" height="56" style="margin-bottom:10px;">
+                        <path d="M 380 235 C 372 188 344 152 304 132 C 264 112 216 112 176 130 C 134 149 106 185 98 228 C 89 274 103 321 132 353 C 162 387 206 404 250 400 C 288 396 322 378 344 348 C 358 330 364 308 360 286" fill="none" stroke="#0866ff" stroke-width="55" stroke-linecap="round"/>
+                        <path d="M 96 250 L 362 235" fill="none" stroke="#0866ff" stroke-width="55" stroke-linecap="round"/>
+                    </svg>
+                    <p style="margin:0 0 2px;font-size:18px;font-weight:800;color:#1c1e21;">eMake eFootball</p>
+                    <p style="margin:0;font-size:13px;color:#aaa;">Version 1.0.0</p>
+                </div>
+
+                <!-- Description -->
+                <div style="padding:16px;border-bottom:1px solid #efefef;">
+                    <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#606770;text-transform:uppercase;">About</p>
+                    <p style="margin:0;font-size:14px;color:#1c1e21;line-height:1.6;">
+                        eMake is an eFootball community app built for players who want to connect, share highlights, and find friendly matches. Built with ❤️ for the eFootball community.
+                    </p>
+                </div>
+
+                <!-- Built by -->
+                <div style="padding:16px;">
+                    <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#606770;text-transform:uppercase;">Built by</p>
+                    <p style="margin:0;font-size:14px;color:#1c1e21;">eMake Team</p>
+                </div>
+
+            </div>
+
+            <!-- Send Feedback -->
+            <div style="margin:12px 16px 0;background:white;border-radius:16px;overflow:hidden;">
+                <button onclick="window.location.href='mailto:emaketeamsupport@gmail.com?subject=eMake Feedback'"
+                    style="width:100%;padding:16px;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:14px;text-align:left;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    <div style="flex:1;">
+                        <p style="margin:0 0 2px;font-size:15px;font-weight:700;color:#1c1e21;">Send Feedback</p>
+                        <p style="margin:0;font-size:13px;color:#aaa;">emaketeamsupport@gmail.com</p>
+                    </div>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+            </div>
+
+            <!-- Legal -->
+            <div style="margin:12px 16px 0;background:white;border-radius:16px;overflow:hidden;">
+                <button onclick="showPrivacyPolicy()"
+                    style="width:100%;padding:16px;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:14px;text-align:left;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span style="flex:1;font-size:15px;font-weight:700;color:#1c1e21;">Privacy Policy</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+            </div>
+
+            <!-- Copyright -->
+            <p style="text-align:center;font-size:12px;color:#aaa;padding:24px 16px;">© 2026 eMake eFootball. All rights reserved.</p>
+
+        </div>
+    `;
+}
+
+
+// -------------------------------------------------------------------------
+// --- PRIVACY POLICY PAGE ---
+// -------------------------------------------------------------------------
+
+function showPrivacyPolicy() {
+    app.innerHTML = `
+        <div style="width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:16px;padding:16px;border-bottom:1px solid #efefef;">
+                <button onclick="showMoreSettings()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span style="font-weight:700;font-size:18px;color:#1c1e21;">Privacy Policy</span>
+            </div>
+
+            <div style="padding:20px 16px;line-height:1.7;color:#1c1e21;">
+                <p style="font-size:12px;color:#aaa;margin:0 0 20px;">Last updated: March 2026</p>
+
+                <h3 style="margin:0 0 8px;font-size:15px;">What we collect</h3>
+                <p style="margin:0 0 16px;font-size:14px;color:#444;">We collect your username, full name, WhatsApp number, profile photo, and posts you share on eMake.</p>
+
+                <h3 style="margin:0 0 8px;font-size:15px;">How we use it</h3>
+                <p style="margin:0 0 16px;font-size:14px;color:#444;">Your information is used only to display your profile and connect you with the eFootball community. We do not sell your data to anyone.</p>
+
+                <h3 style="margin:0 0 8px;font-size:15px;">Your rights</h3>
+                <p style="margin:0 0 16px;font-size:14px;color:#444;">You can edit or delete your account at any time from Settings → Account. Deleting your account permanently removes all your data.</p>
+
+                <h3 style="margin:0 0 8px;font-size:15px;">Contact</h3>
+                <p style="margin:0 0 16px;font-size:14px;color:#444;">For any questions about your privacy, contact us at <a href="mailto:emaketeamsupport@gmail.com" style="color:#0866ff;text-decoration:none;">emaketeamsupport@gmail.com</a></p>
+            </div>
+
+        </div>
+    `;
+}
+
+// -------------------------------------------------------------------------
+// --- SCREEN 1: CONVERSATIONS LIST ---
+// -------------------------------------------------------------------------
+
+async function showMessenger() {
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'flex';
+
+    app.style.display = 'block';
+    app.style.padding = '0';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'unset';
+    app.style.justifyContent = 'unset';
+
+    // Update nav active state
+    document.querySelectorAll('.nav-btn').forEach(b => {
+        b.style.color = '#606770';
+        b.querySelectorAll('svg').forEach(s => s.setAttribute('stroke', '#606770'));
+        b.querySelectorAll('span').forEach(s => s.style.color = '#606770');
+    });
+    const msgNav = document.getElementById('nav-messages');
+    if (msgNav) {
+        msgNav.querySelectorAll('svg').forEach(s => s.setAttribute('stroke', '#0866ff'));
+        msgNav.querySelectorAll('span').forEach(s => s.style.color = '#0866ff');
+    }
+
+    app.innerHTML = `
+        <div style="width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid #efefef;position:sticky;top:0;background:white;z-index:100;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <img src="emessenger-192.png" style="width:28px;height:28px;border-radius:6px;">
+                    <span style="font-weight:800;font-size:20px;color:#1c1e21;">eMessenger</span>
+                </div>
+                <button onclick="showNewMessage()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </button>
+            </div>
+
+            <!-- Search -->
+            <div style="padding:10px 16px;border-bottom:1px solid #efefef;">
+                <div style="display:flex;align-items:center;background:#f0f2f5;border-radius:20px;padding:10px 16px;gap:10px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input id="messenger-search" type="text" placeholder="Search conversations..."
+                        style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#1c1e21;font-family:Helvetica,Arial,sans-serif;">
+                </div>
+            </div>
+
+            <!-- Conversations list -->
+            <div id="conversations-list">
+                <div style="display:flex;justify-content:center;padding:40px;">
+                    <div class="spinner" style="width:24px;height:24px;border-width:3px;"></div>
+                </div>
+            </div>
+
+        </div>
+    `;
+
+    await loadConversations();
+
+    // Search
+    let searchTimer;
+    document.getElementById('messenger-search').addEventListener('input', (e) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => loadConversations(e.target.value.trim()), 400);
+    });
+
+    // Check unread and update badge
+    checkUnreadBadge();
+}
+
+async function loadConversations(query = '') {
+    const list = document.getElementById('conversations-list');
+    if (!list) return;
+
+    // Get all messages where user is sender or receiver
+    const { data: messages } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`sender_id.eq.${state.user.id},receiver_id.eq.${state.user.id}`)
+        .order('created_at', { ascending: false });
+
+    if (!messages || messages.length === 0) {
+        list.innerHTML = `
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 24px;text-align:center;">
+                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#e4e6ea" stroke-width="1.2" style="margin-bottom:16px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#1c1e21;">No messages yet</p>
+                <p style="margin:0 0 24px;font-size:13px;color:#aaa;">Start a conversation with someone!</p>
+                <button onclick="showNewMessage()" style="padding:12px 28px;background:#0866ff;color:white;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:Helvetica,Arial,sans-serif;">
+                    New Message
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    // Build unique conversations — one per other user
+    const seen = new Set();
+    const conversations = [];
+
+    for (const msg of messages) {
+        const otherId = msg.sender_id === state.user.id ? msg.receiver_id : msg.sender_id;
+        if (!seen.has(otherId)) {
+            seen.add(otherId);
+            conversations.push({ otherId, lastMsg: msg });
+        }
+    }
+
+    // Fetch profiles for all other users
+    const otherIds = conversations.map(c => c.otherId);
+    const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url')
+        .in('id', otherIds);
+
+    const profileMap = {};
+    (profiles || []).forEach(p => profileMap[p.id] = p);
+
+    // Filter by search query
+    const filtered = query
+        ? conversations.filter(c => {
+            const p = profileMap[c.otherId];
+            const name = (p?.full_name || p?.username || '').toLowerCase();
+            return name.includes(query.toLowerCase());
+        })
+        : conversations;
+
+    if (filtered.length === 0) {
+        list.innerHTML = `<div style="text-align:center;padding:40px;color:#aaa;font-size:14px;">No conversations found.</div>`;
+        return;
+    }
+
+    // Count unread per conversation
+    const { data: unreadData } = await supabase
+        .from('messages')
+        .select('sender_id')
+        .eq('receiver_id', state.user.id)
+        .eq('is_read', false);
+
+    const unreadByUser = {};
+    (unreadData || []).forEach(m => {
+        unreadByUser[m.sender_id] = (unreadByUser[m.sender_id] || 0) + 1;
+    });
+
+    function timeAgo(dateStr) {
+        const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+        if (diff < 60) return 'now';
+        if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+        return `${Math.floor(diff / 86400)}d`;
+    }
+
+    list.innerHTML = filtered.map(({ otherId, lastMsg }) => {
+        const profile = profileMap[otherId] || {};
+        const name = profile.full_name || profile.username || 'Unknown';
+        const avatar = profile.avatar_url;
+        const unread = unreadByUser[otherId] || 0;
+        const isMine = lastMsg.sender_id === state.user.id;
+
+        const avatarHtml = avatar
+            ? `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+            : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
+
+        let preview = '';
+        if (lastMsg.media_type === 'image') preview = '📷 Photo';
+        else if (lastMsg.media_type === 'video') preview = '🎥 Video';
+        else preview = lastMsg.content || '';
+        if (preview.length > 32) preview = preview.substring(0, 32) + '...';
+
+        return `
+            <div onclick="openChat('${otherId}')"
+                style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;">
+                <!-- Avatar -->
+                <div style="position:relative;flex-shrink:0;">
+                    <div style="width:52px;height:52px;border-radius:50%;overflow:hidden;background:#e4e6ea;display:flex;align-items:center;justify-content:center;">
+                        ${avatarHtml}
+                    </div>
+                    ${unread > 0 ? `<div style="position:absolute;bottom:1px;right:1px;width:12px;height:12px;border-radius:50%;background:#e41e3f;border:2px solid white;"></div>` : ''}
+                </div>
+                <!-- Info -->
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                        <span style="font-weight:${unread > 0 ? '800' : '700'};font-size:15px;color:#1c1e21;">${name}</span>
+                        <span style="font-size:12px;color:#aaa;">${timeAgo(lastMsg.created_at)}</span>
+                    </div>
+                    <p style="margin:0;font-size:13px;color:${unread > 0 ? '#1c1e21' : '#aaa'};font-weight:${unread > 0 ? '600' : '400'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        ${isMine ? 'You: ' : ''}${preview}
+                    </p>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+
+// -------------------------------------------------------------------------
+// --- NEW MESSAGE (start a conversation) ---
+// -------------------------------------------------------------------------
+
+async function showNewMessage() {
+    app.innerHTML = `
+        <div style="width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:16px;padding:16px;border-bottom:1px solid #efefef;">
+                <button onclick="showMessenger()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span style="font-weight:700;font-size:18px;color:#1c1e21;">New Message</span>
+            </div>
+
+            <!-- Search people -->
+            <div style="padding:10px 16px;border-bottom:1px solid #efefef;">
+                <div style="display:flex;align-items:center;background:#f0f2f5;border-radius:20px;padding:10px 16px;gap:10px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input id="new-msg-search" type="text" placeholder="Search people..."
+                        style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#1c1e21;font-family:Helvetica,Arial,sans-serif;">
+                </div>
+            </div>
+
+            <!-- People list -->
+            <div id="new-msg-list">
+                <div style="display:flex;justify-content:center;padding:40px;">
+                    <div class="spinner" style="width:24px;height:24px;border-width:3px;"></div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    async function loadPeople(query = '') {
+        const listEl = document.getElementById('new-msg-list');
+        let req = supabase.from('profiles').select('*').neq('id', state.user.id);
+        if (query) req = req.ilike('username', `%${query}%`);
+        else req = req.limit(20);
+
+        const { data: people } = await req;
+
+        if (!people || people.length === 0) {
+            listEl.innerHTML = `<div style="text-align:center;padding:40px;color:#aaa;font-size:14px;">No users found.</div>`;
+            return;
+        }
+
+        listEl.innerHTML = people.map(p => {
+            const name = p.full_name || p.username || 'Unknown';
+            const avatarHtml = p.avatar_url
+                ? `<img src="${p.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+                : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
+
+            return `
+                <div onclick="openChat('${p.id}')"
+                    style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;">
+                    <div style="width:46px;height:46px;border-radius:50%;overflow:hidden;background:#e4e6ea;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        ${avatarHtml}
+                    </div>
+                    <div>
+                        <p style="margin:0 0 2px;font-weight:700;font-size:14px;color:#1c1e21;">${name}</p>
+                        <p style="margin:0;font-size:12px;color:#aaa;">@${p.username || 'unknown'}</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    await loadPeople();
+
+    let searchTimer;
+    document.getElementById('new-msg-search').addEventListener('input', (e) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => loadPeople(e.target.value.trim()), 400);
+    });
+}
+
+
+// -------------------------------------------------------------------------
+// --- SCREEN 2: CHAT ---
+// -------------------------------------------------------------------------
+
+let chatSubscription = null;
+
+async function openChat(otherUserId) {
+    // Unsubscribe from any previous chat
+    if (chatSubscription) {
+        supabase.removeChannel(chatSubscription);
+        chatSubscription = null;
+    }
+
+    app.style.display = 'block';
+    app.style.padding = '0';
+
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'none';
+
+    // Show spinner
+    app.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;height:100vh;">
+            <div class="spinner"></div>
+        </div>
+    `;
+
+    // Fetch other user profile
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', otherUserId)
+        .single();
+
+    const name = profile?.full_name || profile?.username || 'Unknown';
+    const avatar = profile?.avatar_url;
+
+    // Build conversation_id — always same regardless of who starts
+    const conversationId = [state.user.id, otherUserId].sort().join('_');
+
+    const avatarHtml = avatar
+        ? `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+        : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
+
+    app.innerHTML = `
+        <div style="width:100%;height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;display:flex;flex-direction:column;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #efefef;background:white;flex-shrink:0;">
+                <button onclick="showMessenger()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <div onclick="showProfile('${otherUserId}')" style="width:38px;height:38px;border-radius:50%;overflow:hidden;background:#e4e6ea;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
+                    ${avatarHtml}
+                </div>
+                <div onclick="showProfile('${otherUserId}')" style="flex:1;cursor:pointer;">
+                    <p style="margin:0;font-weight:700;font-size:15px;color:#1c1e21;">${name}</p>
+                </div>
+            </div>
+
+            <!-- Messages area -->
+            <div id="chat-messages" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;justify-content:center;padding:20px;">
+                    <div class="spinner" style="width:20px;height:20px;border-width:2px;"></div>
+                </div>
+            </div>
+
+            <!-- Input bar -->
+            <div style="display:flex;align-items:flex-end;gap:10px;padding:10px 16px;border-top:1px solid #efefef;background:white;flex-shrink:0;">
+                <!-- Attach media -->
+                <button id="attach-btn" style="background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="1.8"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <input id="media-input" type="file" accept="image/*,video/*" style="display:none;">
+
+                <!-- Text input -->
+                <div style="flex:1;background:#f0f2f5;border-radius:20px;padding:10px 16px;min-height:40px;max-height:120px;overflow-y:auto;outline:none;font-size:14px;color:#1c1e21;font-family:Helvetica,Arial,sans-serif;line-height:1.4;"
+                    id="chat-input" contenteditable="true" data-placeholder="Message..."
+                    style=""></div>
+
+                <!-- Send button -->
+                <button id="send-btn" style="width:38px;height:38px;border-radius:50%;background:#0866ff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+            </div>
+
+        </div>
+    `;
+
+    // Add placeholder style
+    const style = document.createElement('style');
+    style.textContent = `#chat-input:empty:before { content: attr(data-placeholder); color: #aaa; pointer-events: none; }`;
+    document.head.appendChild(style);
+
+    // Load messages
+    await loadChatMessages(conversationId, otherUserId);
+
+    // Mark messages as read
+    await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('receiver_id', state.user.id)
+        .eq('sender_id', otherUserId);
+
+    checkUnreadBadge();
+
+    // Realtime subscription
+    chatSubscription = supabase
+        .channel(`chat_${conversationId}`)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`
+        }, async (payload) => {
+            const msg = payload.new;
+            appendMessage(msg, msg.sender_id === state.user.id);
+
+            // Mark as read if it's for me
+            if (msg.receiver_id === state.user.id) {
+                await supabase.from('messages').update({ is_read: true }).eq('id', msg.id);
+                checkUnreadBadge();
+            }
+        })
+        .subscribe();
+
+    // Send button
+    document.getElementById('send-btn').onclick = () => sendMessage(conversationId, otherUserId);
+
+    // Send on Enter (not shift+enter)
+    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage(conversationId, otherUserId);
+        }
+    });
+
+    // Attach media
+    document.getElementById('attach-btn').onclick = () => {
+        document.getElementById('media-input').click();
+    };
+
+    document.getElementById('media-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        await sendMediaMessage(file, conversationId, otherUserId);
+    });
+}
+
+async function loadChatMessages(conversationId, otherUserId) {
+    const container = document.getElementById('chat-messages');
+
+    const { data: messages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+    if (!messages || messages.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:40px 20px;color:#aaa;">
+                <p style="margin:0;font-size:13px;">Say hi! Start the conversation 👋</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = '';
+    messages.forEach(msg => {
+        appendMessage(msg, msg.sender_id === state.user.id);
+    });
+
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+function appendMessage(msg, isMine) {
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+
+    // Remove empty state if present
+    const emptyState = container.querySelector('div[style*="Say hi"]');
+    if (emptyState) emptyState.remove();
+
+    function timeStr(dateStr) {
+        const d = new Date(dateStr);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `display:flex;flex-direction:column;align-items:${isMine ? 'flex-end' : 'flex-start'};margin-bottom:2px;`;
+
+    let contentHtml = '';
+
+    if (msg.media_type === 'image' && msg.media_url) {
+        contentHtml = `
+            <div style="max-width:220px;border-radius:${isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px'};overflow:hidden;">
+                <img src="${msg.media_url}" style="width:100%;display:block;" onclick="window.open('${msg.media_url}','_blank')">
+            </div>
+        `;
+    } else if (msg.media_type === 'video' && msg.media_url) {
+        contentHtml = `
+            <div style="max-width:220px;border-radius:${isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px'};overflow:hidden;">
+                <video src="${msg.media_url}" controls playsinline style="width:100%;display:block;"></video>
+            </div>
+        `;
+    } else {
+        contentHtml = `
+            <div style="max-width:260px;padding:10px 14px;border-radius:${isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px'};background:${isMine ? '#0866ff' : '#f0f2f5'};">
+                <p style="margin:0;font-size:14px;color:${isMine ? 'white' : '#1c1e21'};line-height:1.5;word-break:break-word;">${msg.content || ''}</p>
+            </div>
+        `;
+    }
+
+    wrapper.innerHTML = `
+        ${contentHtml}
+        <span style="font-size:11px;color:#aaa;margin-top:3px;margin-${isMine ? 'right' : 'left'}:4px;">
+            ${timeStr(msg.created_at)}${isMine ? (msg.is_read ? ' ✓✓' : ' ✓') : ''}
+        </span>
+    `;
+
+    container.appendChild(wrapper);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendMessage(conversationId, otherUserId) {
+    const input = document.getElementById('chat-input');
+    const content = input.innerText.trim();
+    if (!content) return;
+
+    input.innerText = '';
+
+    const { error } = await supabase.from('messages').insert({
+        sender_id: state.user.id,
+        receiver_id: otherUserId,
+        content: content,
+        conversation_id: conversationId,
+        is_read: false
+    });
+
+    if (error) console.error('Send error:', error);
+    const { data: prefData } = await supabase.from('privacy_settings').select('notif_messages').eq('user_id', otherUserId).single();
+if (!prefData || prefData.notif_messages !== false) {
+    createNotification(otherUserId, 'message', null, null);
+}
+}
+
+async function sendMediaMessage(file, conversationId, otherUserId) {
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;border-color:white;border-top-color:transparent;display:inline-block;"></div>`;
+
+    try {
+        const isVideo = file.type.startsWith('video/');
+        const ext = file.name.split('.').pop();
+        const fileName = `messages/${Date.now()}_${state.user.id}.${ext}`;
+
+        const compressed = await compressMedia(file);
+if (!compressed) return;
+const { data: uploadData, error: uploadError } = await supabase.storage
+    .from('content')
+    .upload(fileName, compressed, { upsert: true });
+
+        if (uploadError) {
+            alert('Upload failed: ' + uploadError.message);
+            return;
+        }
+
+        const { data: urlData } = supabase.storage
+            .from('content')
+            .getPublicUrl(fileName);
+
+        const { error: msgError } = await supabase.from('messages').insert({
+            sender_id: state.user.id,
+            receiver_id: otherUserId,
+            media_url: urlData.publicUrl,
+            media_type: isVideo ? 'video' : 'image',
+            conversation_id: conversationId,
+            is_read: false
+        });
+
+        if (msgError) {
+            alert('Message failed: ' + msgError.message);
+        }
+
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="white"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+}
+
+// -------------------------------------------------------------------------
+// --- UNREAD BADGE ---
+// -------------------------------------------------------------------------
+
+async function checkUnreadBadge() {
+    const badge = document.getElementById('msg-badge');
+    if (!badge) return;
+
+    const { count } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('receiver_id', state.user.id)
+        .eq('is_read', false);
+
+    badge.style.display = count > 0 ? 'block' : 'none';
+}
+
+// -------------------------------------------------------------------------
+// --- NOTIFICATIONS SCREEN ---
+// -------------------------------------------------------------------------
+
+async function showNotifications() {
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'flex';
+
+    app.style.display = 'block';
+    app.style.padding = '0';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'unset';
+    app.style.justifyContent = 'unset';
+
+    app.innerHTML = `
+        <div style="width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
+
+            <!-- Header -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid #efefef;position:sticky;top:0;background:white;z-index:100;">
+                <button onclick="showHome()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span style="font-weight:800;font-size:20px;color:#1c1e21;">Notifications</span>
+                <button id="mark-all-read" style="background:none;border:none;cursor:pointer;font-size:13px;font-weight:700;color:#0866ff;">
+                    Mark all read
+                </button>
+            </div>
+
+            <!-- Notifications list -->
+            <div id="notif-list">
+                <div style="display:flex;justify-content:center;padding:40px;">
+                    <div class="spinner" style="width:24px;height:24px;border-width:3px;"></div>
+                </div>
+            </div>
+
+        </div>
+    `;
+
+    await loadNotifications();
+
+    // Mark all read
+    document.getElementById('mark-all-read').onclick = async () => {
+        await supabase
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('user_id', state.user.id);
+
+        // Update UI — remove all unread highlights
+        document.querySelectorAll('.notif-unread').forEach(el => {
+            el.style.background = 'white';
+            el.classList.remove('notif-unread');
+        });
+
+        // Hide badge
+        const badge = document.getElementById('notif-badge');
+        if (badge) badge.style.display = 'none';
+    };
+
+    // Mark all as read when opening
+    await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', state.user.id)
+        .eq('is_read', false);
+
+    checkNotifBadge();
+}
+
+async function loadNotifications() {
+    const list = document.getElementById('notif-list');
+    if (!list) return;
+
+    const { data: notifications } = await supabase
+        .from('notifications')
+        .select('*, sender:sender_id(username, avatar_url)')
+        .eq('user_id', state.user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+    if (!notifications || notifications.length === 0) {
+        list.innerHTML = `
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 24px;text-align:center;">
+                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#e4e6ea" stroke-width="1.2" style="margin-bottom:16px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#1c1e21;">No notifications yet</p>
+                <p style="margin:0;font-size:13px;color:#aaa;">When someone likes or comments on your posts you'll see it here</p>
+            </div>
+        `;
+        return;
+    }
+
+    function timeAgo(dateStr) {
+        const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+        if (diff < 60) return `${diff}s`;
+        if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+        return `${Math.floor(diff / 86400)}d`;
+    }
+
+    list.innerHTML = notifications.map(notif => {
+        const sender = notif.sender || {};
+        const name = sender.username || 'Someone';
+        const avatar = sender.avatar_url;
+        const isUnread = !notif.is_read;
+
+        const avatarHtml = avatar
+            ? `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+            : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
+
+        // Icon and message per type
+        let iconHtml = '';
+        let message = '';
+        let onclick = '';
+
+        if (notif.type === 'like') {
+            iconHtml = `<div style="width:32px;height:32px;border-radius:50%;background:#fff0f3;display:flex;align-items:center;justify-content:center;position:absolute;bottom:-2px;right:-2px;border:2px solid white;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="#e41e3f" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </div>`;
+            message = `<span style="font-weight:700;color:#1c1e21;">${name}</span> liked your post`;
+            onclick = notif.post_id ? `showHome()` : '';
+        } else if (notif.type === 'comment') {
+            iconHtml = `<div style="width:32px;height:32px;border-radius:50%;background:#f0f4ff;display:flex;align-items:center;justify-content:center;position:absolute;bottom:-2px;right:-2px;border:2px solid white;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0866ff" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>`;
+            message = `<span style="font-weight:700;color:#1c1e21;">${name}</span> commented on your post`;
+            onclick = notif.post_id ? `openComments('${notif.post_id}')` : '';
+        } else if (notif.type === 'message') {
+            iconHtml = `<div style="width:32px;height:32px;border-radius:50%;background:#f0fff4;display:flex;align-items:center;justify-content:center;position:absolute;bottom:-2px;right:-2px;border:2px solid white;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25a244" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>`;
+            message = `<span style="font-weight:700;color:#1c1e21;">${name}</span> sent you a message`;
+            onclick = `openChat('${notif.sender_id}')`;
+        }
+
+        return `
+            <div onclick="${onclick}" ${isUnread ? 'class="notif-unread"' : ''}
+                style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;background:${isUnread ? '#f0f4ff' : 'white'};">
+                <!-- Avatar with icon overlay -->
+                <div style="position:relative;flex-shrink:0;">
+                    <div style="width:48px;height:48px;border-radius:50%;overflow:hidden;background:#e4e6ea;display:flex;align-items:center;justify-content:center;">
+                        ${avatarHtml}
+                    </div>
+                    ${iconHtml}
+                </div>
+                <!-- Text -->
+                <div style="flex:1;min-width:0;">
+                    <p style="margin:0 0 2px;font-size:14px;color:#444;line-height:1.4;">${message}</p>
+                    <span style="font-size:12px;color:#aaa;">${timeAgo(notif.created_at)}</span>
+                </div>
+                ${isUnread ? `<div style="width:8px;height:8px;border-radius:50%;background:#0866ff;flex-shrink:0;"></div>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+
+// -------------------------------------------------------------------------
+// --- CREATE NOTIFICATION (call this when likes/comments/messages happen) ---
+// -------------------------------------------------------------------------
+
+async function createNotification(userId, type, postId = null, messageId = null) {
+    // Don't notify yourself
+    if (userId === state.user.id) return;
+
+    await supabase.from('notifications').insert({
+        user_id: userId,
+        sender_id: state.user.id,
+        type: type,
+        post_id: postId,
+        message_id: messageId
+    });
+
+    checkNotifBadge();
+}
+
+
+// -------------------------------------------------------------------------
+// --- CHECK NOTIFICATION BADGE ---
+// -------------------------------------------------------------------------
+
+async function checkNotifBadge() {
+    const badge = document.getElementById('notif-badge');
+    if (!badge) return;
+
+    const { count } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', state.user.id)
+        .eq('is_read', false);
+
+    badge.style.display = count > 0 ? 'block' : 'none';
+}
+
+// --------------------------------------------------
+
+// -------------------------------------------------
+// --- FORGOT PASSWORD + RESET PASSWORD ---
+// -------------------------------------------------
+
+
+// --------------------------------------------------
+// --- PAGE 1: FORGOT PASSWORD ---
+// --------------------------------------------------
+
+function showForgotPassword() {
+    app.style.display = 'flex';
+    app.style.padding = '20px';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'center';
+    app.style.justifyContent = 'center';
+
+    app.innerHTML = `
+        <div class="auth-card" style="width:100%;max-width:400px;">
+
+            <!-- Back button -->
+            <button onclick="showLogin()" style="background:none;border:none;cursor:pointer;padding:0;margin-bottom:20px;display:flex;align-items:center;gap:6px;color:#606770;font-family:Helvetica,Arial,sans-serif;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                Back to Login
+            </button>
+
+            <!-- Icon -->
+            <div style="display:flex;justify-content:center;margin-bottom:16px;">
+                <div style="width:64px;height:64px;border-radius:50%;background:#f0f4ff;display:flex;align-items:center;justify-content:center;">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0866ff" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+            </div>
+
+            <h2 style="text-align:center;margin:0 0 8px;font-size:22px;font-weight:800;color:#1c1e21;font-family:Helvetica,Arial,sans-serif;">Forgot Password?</h2>
+            <p style="text-align:center;margin:0 0 24px;font-size:14px;color:#606770;font-family:Helvetica,Arial,sans-serif;line-height:1.5;">
+                Enter your email address and we'll send you a link to reset your password.
+            </p>
+
+            <!-- Email input -->
+            <input type="email" id="reset-email" placeholder="Email address"
+                style="width:100%;padding:14px 16px;border:1.5px solid #dddfe2;border-radius:12px;font-size:15px;outline:none;font-family:Helvetica,Arial,sans-serif;box-sizing:border-box;margin-bottom:12px;color:#1c1e21;">
+
+            <!-- Status message -->
+            <div id="reset-status" style="display:none;padding:12px;border-radius:10px;font-size:13px;text-align:center;margin-bottom:12px;font-family:Helvetica,Arial,sans-serif;"></div>
+
+            <!-- Send button -->
+            <button id="send-reset-btn"
+                style="width:100%;padding:14px;border:none;border-radius:12px;background:#0866ff;color:white;font-size:15px;font-weight:700;cursor:pointer;font-family:Helvetica,Arial,sans-serif;">
+                Send Reset Link
+            </button>
+
+        </div>
+    `;
+
+    document.getElementById('send-reset-btn').onclick = async () => {
+        const btn = document.getElementById('send-reset-btn');
+        const email = document.getElementById('reset-email').value.trim();
+        const status = document.getElementById('reset-status');
+
+        if (!email) {
+            status.textContent = 'Please enter your email address.';
+            status.style.background = '#fff0f3';
+            status.style.color = '#e41e3f';
+            status.style.display = 'block';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = `<div class="spinner" style="width:18px;height:18px;border-width:2px;border-color:rgba(255,255,255,0.4);border-top-color:white;display:inline-block;vertical-align:middle;margin-right:8px;"></div> Sending...`;
+
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: 'https://emake.netlify.app'
+        });
+
+        if (error) {
+            status.textContent = error.message;
+            status.style.background = '#fff0f3';
+            status.style.color = '#e41e3f';
+            status.style.display = 'block';
+            btn.disabled = false;
+            btn.innerHTML = 'Send Reset Link';
+        } else {
+            // Success!
+            status.innerHTML = `✅ Reset link sent! Check your email inbox and spam folder.`;
+            status.style.background = '#f0fff4';
+            status.style.color = '#25a244';
+            status.style.display = 'block';
+            btn.disabled = true;
+            btn.innerHTML = 'Link Sent!';
+            btn.style.background = '#25a244';
+        }
+    };
+
+    // Allow pressing Enter
+    document.getElementById('reset-email').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById('send-reset-btn').click();
+    });
+}
+
+
+// -------------------------------------------------------------------------
+// --- PAGE 2: RESET PASSWORD (shown when user clicks email link) ---
+// -------------------------------------------------------------------------
+
+function showResetPassword() {
+    app.style.display = 'flex';
+    app.style.padding = '20px';
+    app.style.minHeight = '100vh';
+    app.style.alignItems = 'center';
+    app.style.justifyContent = 'center';
+
+    // Hide bottom nav
+    const nav = document.getElementById('bottom-nav');
+    if (nav) nav.style.display = 'none';
+
+    app.innerHTML = `
+        <div class="auth-card" style="width:100%;max-width:400px;">
+
+            <!-- Icon -->
+            <div style="display:flex;justify-content:center;margin-bottom:16px;">
+                <div style="width:64px;height:64px;border-radius:50%;background:#f0f4ff;display:flex;align-items:center;justify-content:center;">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0866ff" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </div>
+            </div>
+
+            <h2 style="text-align:center;margin:0 0 8px;font-size:22px;font-weight:800;color:#1c1e21;font-family:Helvetica,Arial,sans-serif;">Set New Password</h2>
+            <p style="text-align:center;margin:0 0 24px;font-size:14px;color:#606770;font-family:Helvetica,Arial,sans-serif;">
+                Choose a strong password for your account.
+            </p>
+
+            <!-- New password -->
+            <input type="password" id="new-password" placeholder="New password"
+                style="width:100%;padding:14px 16px;border:1.5px solid #dddfe2;border-radius:12px;font-size:15px;outline:none;font-family:Helvetica,Arial,sans-serif;box-sizing:border-box;margin-bottom:12px;color:#1c1e21;">
+
+            <!-- Confirm password -->
+            <input type="password" id="confirm-new-password" placeholder="Confirm new password"
+                style="width:100%;padding:14px 16px;border:1.5px solid #dddfe2;border-radius:12px;font-size:15px;outline:none;font-family:Helvetica,Arial,sans-serif;box-sizing:border-box;margin-bottom:12px;color:#1c1e21;">
+
+            <!-- Status -->
+            <div id="new-pass-status" style="display:none;padding:12px;border-radius:10px;font-size:13px;text-align:center;margin-bottom:12px;font-family:Helvetica,Arial,sans-serif;"></div>
+
+            <!-- Save button -->
+            <button id="save-new-pass-btn"
+                style="width:100%;padding:14px;border:none;border-radius:12px;background:#0866ff;color:white;font-size:15px;font-weight:700;cursor:pointer;font-family:Helvetica,Arial,sans-serif;">
+                Save Password
+            </button>
+
+        </div>
+    `;
+
+    document.getElementById('save-new-pass-btn').onclick = async () => {
+        const btn = document.getElementById('save-new-pass-btn');
+        const newPassword = document.getElementById('new-password').value;
+        const confirmPassword = document.getElementById('confirm-new-password').value;
+        const status = document.getElementById('new-pass-status');
+
+        // Validation
+        if (!newPassword) {
+            status.textContent = 'Please enter a new password.';
+            status.style.background = '#fff0f3';
+            status.style.color = '#e41e3f';
+            status.style.display = 'block';
+            return;
+        }
+        if (newPassword.length < 6) {
+            status.textContent = 'Password must be at least 6 characters.';
+            status.style.background = '#fff0f3';
+            status.style.color = '#e41e3f';
+            status.style.display = 'block';
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            status.textContent = 'Passwords do not match.';
+            status.style.background = '#fff0f3';
+            status.style.color = '#e41e3f';
+            status.style.display = 'block';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = `<div class="spinner" style="width:18px;height:18px;border-width:2px;border-color:rgba(255,255,255,0.4);border-top-color:white;display:inline-block;vertical-align:middle;margin-right:8px;"></div> Saving...`;
+
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+        if (error) {
+            status.textContent = error.message;
+            status.style.background = '#fff0f3';
+            status.style.color = '#e41e3f';
+            status.style.display = 'block';
+            btn.disabled = false;
+            btn.innerHTML = 'Save Password';
+        } else {
+            // Success — go to home!
+            status.innerHTML = '✅ Password updated! Taking you home...';
+            status.style.background = '#f0fff4';
+            status.style.color = '#25a244';
+            status.style.display = 'block';
+
+            setTimeout(async () => {
+                const { data: { session } } = await supabase.auth.getSession();
+                state.user = session?.user || null;
+                router(state.user ? 'home' : 'login');
+            }, 1500);
+        }
+    };
+}
+
+
+
+
 //---- Zone 7: log out function and others-----------
 window.showProfile = showProfile;
 window.showEditProfile = showEditProfile;
@@ -2002,11 +3629,37 @@ window.showSettings = showSettings;
 window.showFriendlies = showFriendlies;
 window.loadMediaTab = loadMediaTab;
 window.showSplash = showSplash;
+window.showAccountSettings = showAccountSettings;
+window.showPrivacySettings = showPrivacySettings;
+window.showMoreSettings = showMoreSettings;
+window.showPrivacyPolicy = showPrivacyPolicy;
+window.showMessenger = showMessenger;
+window.openChat = openChat;
+window.showNewMessage = showNewMessage;
+window.checkUnreadBadge = checkUnreadBadge;
+window.showNotifications = showNotifications;
+window.checkNotifBadge = checkNotifBadge;
+window.createNotification = createNotification;
+window.showHome = showHome;
+window.showNotificationSettings = showNotificationSettings;
+window.showForgotPassword = showForgotPassword;
+window.showResetPassword = showResetPassword;
+
 
 async function init() {
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token') && hash.includes('type=recovery')) {
+        showResetPassword();
+        return;
+    }
     const { data: { session } } = await supabase.auth.getSession();
     state.user = session?.user || null;
     router(state.user ? 'home' : 'login');
+    if (state.user) checkUnreadBadge();
+    if (state.user) {
+    checkUnreadBadge();
+    checkNotifBadge();  
+}
 }
 
 

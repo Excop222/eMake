@@ -30,6 +30,14 @@
       <line x1="8" y1="12" x2="16" y2="12"/>
     </svg>
   </button>
+  
+  <button onclick="router('messages')" id="nav-messages" class="nav-btn" style="display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:8px 16px;color:#606770;">
+    <div style="position:relative;display:inline-block;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#606770" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <div id="msg-badge" style="display:none;position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:#e41e3f;border:1.5px solid white;"></div>
+    </div>
+    <span style="font-size:10px;"></span>
+</button>
 
   <button onclick="router('profile')" id="nav-profile" style="background:none; border:none; outline:none; cursor:pointer; padding:10px 30px; display:flex; align-items:center; justify-content:center; -webkit-tap-highlight-color:transparent;">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
