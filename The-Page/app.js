@@ -634,11 +634,49 @@ async function showHome() {
     app.style.justifyContent = 'unset';
 
     app.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;">
-            <div class="spinner"></div>
-            <p style="color:#606770;margin-top:15px;">Loading feed...</p>
+    <div style="width:100%;max-width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
+
+        <!-- HEADER -->
+        <div style="position:sticky;top:0;z-index:100;background:white;border-bottom:1px solid #efefef;display:flex;justify-content:space-between;align-items:center;padding:10px 16px;">
+            <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="24" r="22" fill="#0866ff"/>
+                <path d="M14 24 C14 17 19 13 24 13 C30 13 34 17 34 23 C34 24 33 25 32 25 L14.5 25" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+                <path d="M14 24 C14 31 19 35 24 35 C28 35 31 33 33 30" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+            </svg>
+            <button style="background:none;border:none;cursor:pointer;padding:4px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </button>
         </div>
-    `;
+
+        <!-- QUICK POST BAR SKELETON -->
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 16px 12px;border-bottom:1px solid #efefef;">
+            <div class="skeleton" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;"></div>
+            <div style="flex:1;">
+                <div class="skeleton" style="width:80px;height:10px;border-radius:6px;margin-bottom:6px;"></div>
+                <div class="skeleton" style="width:120px;height:10px;border-radius:6px;"></div>
+            </div>
+        </div>
+
+        <!-- SKELETON CARDS -->
+        <div id="feed-container">
+            ${Array(4).fill('').map(() => `
+                <div style="padding:16px 16px 0;border-bottom:1px solid #efefef;">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                        <div class="skeleton" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;"></div>
+                        <div>
+                            <div class="skeleton" style="width:100px;height:10px;border-radius:6px;margin-bottom:6px;"></div>
+                            <div class="skeleton" style="width:60px;height:8px;border-radius:6px;"></div>
+                        </div>
+                    </div>
+                    <div class="skeleton" style="width:100%;height:12px;border-radius:6px;margin-bottom:8px;"></div>
+                    <div class="skeleton" style="width:75%;height:12px;border-radius:6px;margin-bottom:12px;"></div>
+                    <div class="skeleton" style="width:100%;height:200px;border-radius:12px;margin-bottom:14px;"></div>
+                </div>
+            `).join('')}
+        </div>
+
+    </div>
+`;
 
     const { data: myProfile } = await supabase
         .from('profiles')
@@ -855,39 +893,49 @@ function setupVideoAutoplay() {
 }
 
 
-    // Load first batch
-    // Load first batch — show cache instantly if available
-const CACHE_KEY = 'emake_feed_cache';
-const cached = localStorage.getItem(CACHE_KEY);
-
-if (cached) {
-    const cachedPosts = JSON.parse(cached);
-    const feedContainer = document.getElementById('feed-container');
-    if (feedContainer && cachedPosts.length > 0) {
-        feedContainer.innerHTML = cachedPosts.map(buildPostCard).join('');
-        wireEvents();
-        setupVideoAutoplay();
-        const cachedIds = cachedPosts.map(p => p.id);
-        loadLikeCounts(cachedIds);
-        loadCommentCounts(cachedIds);
-    }
-}
 
 // Now fetch fresh from Supabase in background
+
+// Load cache instantly if available
+const CACHE_KEY = 'emake_feed_v1';
+const cached = localStorage.getItem(CACHE_KEY);
+if (cached) {
+    try {
+        const cachedPosts = JSON.parse(cached);
+        if (cachedPosts.length > 0) {
+            document.getElementById('feed-container').innerHTML = 
+                cachedPosts.map(buildPostCard).join('');
+            wireEvents();
+            setupVideoAutoplay();
+            loadLikeCounts(cachedPosts.map(p => p.id));
+            loadCommentCounts(cachedPosts.map(p => p.id));
+        }
+    } catch(e) {}
+}
+
 const { data: firstPosts, error } = await fetchPosts(0);
 if (error) {
-    if (!cached) {
-        app.innerHTML = `<div style="text-align:center;padding:40px;color:#606770;">Failed to load feed.<br><small>${error.message}</small></div>`;
-        return;
+    if (cached) return;
+    // Show no internet message inside feed-container only
+    const feedContainer = document.getElementById('feed-container');
+    if (feedContainer) {
+        feedContainer.innerHTML = `
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;text-align:center;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#e4e6ea" stroke-width="1.5" style="margin-bottom:16px;"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#1c1e21;">No internet connection</p>
+                <p style="margin:0 0 20px;font-size:13px;color:#aaa;">Check your connection and try again</p>
+                <button onclick="showHome()" style="padding:10px 24px;background:#0866ff;color:white;border:none;border-radius:20px;font-size:14px;font-weight:700;cursor:pointer;">
+                    Retry
+                </button>
+            </div>
+        `;
     }
-    // If we have cache just show it silently
     return;
 }
 if (firstPosts.length < perPage) hasMore = false;
-
-// Save fresh posts to cache
 localStorage.setItem(CACHE_KEY, JSON.stringify(firstPosts));
-if (!cached) {
+
+
     app.innerHTML = `
         <div style="width:100%;max-width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
 
@@ -927,7 +975,7 @@ if (!cached) {
 
         </div>
     `;
-}
+
 
 
     wireEvents();
@@ -962,8 +1010,8 @@ if (!cached) {
 
         isLoadingMore = false;
     }, { threshold: 0.1 }).observe(sentinel);
-}
 
+}
 // -------------------------------------------------------------------------
 // --- COMMENTS BOTTOM SHEET + REAL LIKES ---
 // -------------------------------------------------------------------------
@@ -1370,10 +1418,58 @@ async function showProfile(userId) {
 
     // Show spinner
     app.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;">
-            <div class="spinner"></div>
+    <div style="width:100%;min-height:100vh;background:white;font-family:Helvetica,Arial,sans-serif;padding-bottom:70px;">
+
+        <!-- HEADER SKELETON -->
+        <div style="position:sticky;top:0;z-index:100;background:white;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:16px 16px 8px;">
+                <div>
+                    <div class="skeleton" style="width:140px;height:16px;border-radius:6px;margin-bottom:8px;"></div>
+                    <div class="skeleton" style="width:90px;height:12px;border-radius:6px;margin-bottom:6px;"></div>
+                    <div class="skeleton" style="width:70px;height:12px;border-radius:6px;"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:12px;">
+                    ${isOwnProfile ? `
+                    <button onclick="showSettings()" style="background:none;border:none;cursor:pointer;padding:4px;">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round">
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                            <line x1="3" y1="12" x2="21" y2="12"/>
+                            <line x1="3" y1="18" x2="21" y2="18"/>
+                        </svg>
+                    </button>` : `
+                    <button onclick="router('home')" style="background:none;border:none;cursor:pointer;padding:4px;">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1e21" stroke-width="2" stroke-linecap="round">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                    </button>`}
+                    <div class="skeleton" style="width:72px;height:72px;border-radius:50%;"></div>
+                </div>
+            </div>
+
+            <!-- ACTION BUTTON SKELETON -->
+            <div style="padding:0 16px 16px;">
+                <div class="skeleton" style="width:100%;height:40px;border-radius:10px;"></div>
+            </div>
+
+            <!-- TABS SKELETON -->
+            <div style="display:flex;border-bottom:1px solid #efefef;">
+                <div style="flex:1;padding:12px 0;display:flex;justify-content:center;">
+                    <div class="skeleton" style="width:60px;height:12px;border-radius:6px;"></div>
+                </div>
+                <div style="flex:1;padding:12px 0;display:flex;justify-content:center;">
+                    <div class="skeleton" style="width:40px;height:12px;border-radius:6px;"></div>
+                </div>
+            </div>
         </div>
-    `;
+
+        <!-- CONTENT SKELETON -->
+        <div style="padding:16px;">
+            <div class="skeleton" style="width:100%;height:100px;border-radius:16px;margin-bottom:12px;"></div>
+            <div class="skeleton" style="width:100%;height:100px;border-radius:16px;"></div>
+        </div>
+
+    </div>
+`;
 
     // Fetch profile
     const { data: profile } = await supabase
@@ -1383,9 +1479,15 @@ async function showProfile(userId) {
         .single();
 
     if (!profile) {
-        app.innerHTML = `<div style="text-align:center;padding:40px;color:#606770;">Profile not found.</div>`;
-        return;
-    }
+    const content = document.querySelector('[style*="padding:16px"]');
+    if (content) content.innerHTML = `
+        <div style="text-align:center;padding:40px;">
+            <p style="color:#606770;font-size:15px;">Profile not found.</p>
+            <button onclick="router('home')" style="margin-top:12px;padding:10px 24px;background:#0866ff;color:white;border:none;border-radius:20px;font-size:14px;font-weight:700;cursor:pointer;">Go Home</button>
+        </div>
+    `;
+    return;
+}
 
     // Fetch total likes for this user's posts
     const { data: userPosts } = await supabase
