@@ -94,6 +94,16 @@ async function compressMedia(file) {
 }
 
 
+// Firebase init
+const firebaseApp = firebase.initializeApp({
+    apiKey: "AIzaSyDXce2OWx9iq8ae9zEvG09OJkLzQvv7Zzw",
+    authDomain: "emake-79298.firebaseapp.com",
+    projectId: "emake-79298",
+    storageBucket: "emake-79298.firebasestorage.app",
+    messagingSenderId: "843944626635",
+    appId: "1:843944626635:web:1da63ae2a358fbd982ce4e"
+});
+
 // --- ZONE 2: STATE ---
 let state = {
     user: null,
@@ -1252,6 +1262,8 @@ if (postData) {
     const { data: prefData } = await supabase.from('privacy_settings').select('notif_comments').eq('user_id', postData.user_id).single();
     if (!prefData || prefData.notif_comments !== false) {
         createNotification(postData.user_id, 'comment', postId);
+        const { data: profileData } = await supabase.from('profiles').select('username').eq('id', state.user.id).single();
+sendPushNotification(postData.user_id, 'New Comment! 💬', `${profileData?.username || 'Someone'} commented on your post`);
     }
 }
 
@@ -1336,6 +1348,8 @@ if (postData) {
     const { data: prefData } = await supabase.from('privacy_settings').select('notif_likes').eq('user_id', postData.user_id).single();
     if (!prefData || prefData.notif_likes !== false) {
         createNotification(postData.user_id, 'like', postId);
+        const { data: profileData } = await supabase.from('profiles').select('username').eq('id', state.user.id).single();
+        sendPushNotification(postData.user_id, 'New Like! ❤️', `${profileData?.username || 'Someone'} liked your post`);
     }
 }
 }
@@ -3313,6 +3327,8 @@ async function sendMessage(conversationId, otherUserId) {
     const { data: prefData } = await supabase.from('privacy_settings').select('notif_messages').eq('user_id', otherUserId).single();
 if (!prefData || prefData.notif_messages !== false) {
     createNotification(otherUserId, 'message', null, null);
+    const { data: profileData } = await supabase.from('profiles').select('username').eq('id', state.user.id).single();
+sendPushNotification(otherUserId, 'New Message! 💬', `${profileData?.username || 'Someone'} sent you a message`);
 }
 }
 
@@ -3803,6 +3819,64 @@ function togglePasswordVisibility(inputId, eyeId) {
 }
 
 
+// -------------------------------------------------------------------------
+// --- PUSH NOTIFICATIONS (OneSignal) ---
+// -------------------------------------------------------------------------
+
+async function requestPushPermission() {
+    try {
+        if (!window.OneSignal) return;
+        
+        await window.OneSignalDeferred.push(async function(OneSignal) {
+            // Request permission
+            await OneSignal.Notifications.requestPermission();
+            
+            // Get player ID and save to Supabase
+            const playerId = await OneSignal.User.PushSubscription.id;
+            
+            if (playerId && state.user) {
+                await supabase.from('fcm_tokens').upsert({
+                    user_id: state.user.id,
+                    token: playerId
+                }, { onConflict: 'user_id, token' });
+                console.log('OneSignal token saved!');
+            }
+        });
+    } catch (err) {
+        console.log('Push permission error:', err);
+    }
+}
+
+async function sendPushNotification(userId, title, body) {
+    try {
+        // Get user's OneSignal token
+        const { data: tokenData } = await supabase
+            .from('fcm_tokens')
+            .select('token')
+            .eq('user_id', userId)
+            .single();
+
+        if (!tokenData) return;
+
+        // Send via OneSignal API
+        await fetch('https://onesignal.com/api/v1/notifications', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic os_v2_app_oq4trhcifrhkbozjmd7zpfmtevv4tqgcfncesyvmahfsydajxgej6k2n4ry6x66wxnyvxssusn72kma6fxamwr47ec3llamteo3wffq'
+            },
+            body: JSON.stringify({
+                app_id: '7439389c-482c-4ea0-bb29-60ff97959325',
+                include_player_ids: [tokenData.token],
+                headings: { en: title },
+                contents: { en: body },
+                icon: 'https://emake.netlify.app/icon-192.png'
+            })
+        });
+    } catch (err) {
+        console.log('Push send error:', err);
+    }
+}
 
 //---- Zone 7: log out function and others-----------
 window.showProfile = showProfile;
@@ -3828,6 +3902,8 @@ window.showForgotPassword = showForgotPassword;
 window.showResetPassword = showResetPassword;
 window.showLogin = showLogin;
 window.togglePasswordVisibility = togglePasswordVisibility;
+window.requestPushPermission = requestPushPermission;
+window.sendPushNotification = sendPushNotification;
 
 
 async function init() {
@@ -3844,9 +3920,9 @@ async function init() {
     if (state.user) {
         checkUnreadBadge();
         checkNotifBadge();
+        requestPushPermission();
     }
 }
-
 // Register service worker
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')

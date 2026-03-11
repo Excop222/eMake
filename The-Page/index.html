@@ -9,6 +9,20 @@
 <meta name="theme-color" content="#0866ff">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png" type="image/png">
+
+
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: "7439389c-482c-4ea0-bb29-60ff97959325",
+      notifyButton: {
+        enable: false, // We'll handle permission ourselves
+      },
+    });
+  });
+</script>
 </head>
 <body>
 
@@ -50,6 +64,8 @@
   
 
 
-    <script type="module" src="app.js"></script>
+
+<!-- Your app (keep type module!) -->
+<script type="module" src="app.js"></script>
 </body>
 </html>
