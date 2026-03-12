@@ -1,4 +1,4 @@
-const CACHE_NAME = 'emake-v10';
+const CACHE_NAME = 'emake-v11';
 const ASSETS = [
   '/',
   '/index.html',
@@ -27,8 +27,21 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-// Fetch — network first, fallback to cache
+// Fetch — ignore OneSignal and Supabase requests
 self.addEventListener('fetch', e => {
+  const url = e.request.url;
+
+  // Let these pass through without touching them
+  if (
+    url.includes('onesignal.com') ||
+    url.includes('supabase.co') ||
+    url.includes('firebasejs') ||
+    url.includes('gstatic.com') ||
+    url.includes('cdn.onesignal.com')
+  ) {
+    return;
+  }
+
   e.respondWith(
     fetch(e.request)
       .then(res => {
