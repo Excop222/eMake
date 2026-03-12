@@ -94,15 +94,6 @@ async function compressMedia(file) {
 }
 
 
-// Firebase init
-const firebaseApp = firebase.initializeApp({
-    apiKey: "AIzaSyDXce2OWx9iq8ae9zEvG09OJkLzQvv7Zzw",
-    authDomain: "emake-79298.firebaseapp.com",
-    projectId: "emake-79298",
-    storageBucket: "emake-79298.firebasestorage.app",
-    messagingSenderId: "843944626635",
-    appId: "1:843944626635:web:1da63ae2a358fbd982ce4e"
-});
 
 // --- ZONE 2: STATE ---
 let state = {
@@ -3825,22 +3816,15 @@ function togglePasswordVisibility(inputId, eyeId) {
 
 async function requestPushPermission() {
     try {
-        if (!window.OneSignal) return;
-        
-        await window.OneSignalDeferred.push(async function(OneSignal) {
-            // Request permission
+        if (!window.OneSignalDeferred) return;
+
+        window.OneSignalDeferred.push(async function(OneSignal) {
             await OneSignal.Notifications.requestPermission();
-            
-            // Get player ID and save to Supabase
-            const playerId = await OneSignal.User.PushSubscription.id;
-            
-            if (playerId && state.user) {
-                await supabase.from('fcm_tokens').upsert({
-                    user_id: state.user.id,
-                    token: playerId
-                }, { onConflict: 'user_id, token' });
-                console.log('OneSignal token saved!');
-            }
+
+            // Tag user with their Supabase ID so we can target them
+            await OneSignal.User.addTag('user_id', state.user.id);
+
+            console.log('OneSignal permission granted and user tagged!');
         });
     } catch (err) {
         console.log('Push permission error:', err);
@@ -3849,35 +3833,13 @@ async function requestPushPermission() {
 
 async function sendPushNotification(userId, title, body) {
     try {
-        // Get user's OneSignal token
-        const { data: tokenData } = await supabase
-            .from('fcm_tokens')
-            .select('token')
-            .eq('user_id', userId)
-            .single();
-
-        if (!tokenData) return;
-
-        // Send via OneSignal API
-        await fetch('https://onesignal.com/api/v1/notifications', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Basic os_v2_app_oq4trhcifrhkbozjmd7zpfmtevv4tqgcfncesyvmahfsydajxgej6k2n4ry6x66wxnyvxssusn72kma6fxamwr47ec3llamteo3wffq'
-            },
-            body: JSON.stringify({
-                app_id: '7439389c-482c-4ea0-bb29-60ff97959325',
-                include_player_ids: [tokenData.token],
-                headings: { en: title },
-                contents: { en: body },
-                icon: 'https://emake.netlify.app/icon-192.png'
-            })
+        await supabase.functions.invoke('send-push-notification', {
+            body: { userId, title, body }
         });
     } catch (err) {
         console.log('Push send error:', err);
     }
 }
-
 //---- Zone 7: log out function and others-----------
 window.showProfile = showProfile;
 window.showEditProfile = showEditProfile;
