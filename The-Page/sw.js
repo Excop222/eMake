@@ -1,4 +1,4 @@
-const CACHE_NAME = 'emake-v11';
+const CACHE_NAME = 'emake-v12';
 const ASSETS = [
   '/',
   '/index.html',
@@ -37,7 +37,8 @@ self.addEventListener('fetch', e => {
     url.includes('supabase.co') ||
     url.includes('firebasejs') ||
     url.includes('gstatic.com') ||
-    url.includes('cdn.onesignal.com')
+    url.includes('cdn.onesignal.com') ||
+url.includes('firebase-messaging-sw.js')
   ) {
     return;
   }

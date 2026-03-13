@@ -1378,14 +1378,18 @@ async function loadLikeCounts(postIds) {
     });
 }
 async function loadCommentCounts(postIds) {
-    for (const id of postIds) {
-        const { count } = await supabase
-            .from('comments')
-            .select('id', { count: 'exact', head: true })
-            .eq('post_id', id);
+    if (!postIds || postIds.length === 0) return;
+    const { data } = await supabase
+        .from('comments')
+        .select('post_id')
+        .in('post_id', postIds);
+    
+    if (!data) return;
+    postIds.forEach(id => {
+        const count = data.filter(c => c.post_id === id).length;
         const el = document.querySelector(`.comment-count-${id}`);
-        if (el) el.textContent = count || 0;
-    }
+        if (el) el.textContent = count;
+    });
 }
 
 // -------------------------------------------------------------------------
@@ -1872,6 +1876,7 @@ async function loadMediaTab(userId) {
     // Load real like counts
     const postIds = posts.map(p => p.id);
     loadLikeCounts(postIds);
+    loadCommentCounts(postIds);
 }
 
 

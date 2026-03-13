@@ -1,3 +1,12 @@
+* {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-overflow-scrolling: touch;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
 :root {
     --emake-blue: #0866ff;
     --emake-green: #42b72a;
@@ -7,7 +16,7 @@
 }
 
 body {
-    background-color: var(--bg-gray);
+    background-color: white;
     margin: 0;
     font-family: Helvetica, Arial, sans-serif;
     color: var(--text-dark);
@@ -121,8 +130,8 @@ body {
 }
 
 .spinner {
-    border: 4px solid #f3f3f3; /* Light grey */
-    border-top: 4px solid var(--emake-blue); /* Your blue */
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid var(--emake-blue);
     border-radius: 50%;
     width: 30px;
     height: 30px;
