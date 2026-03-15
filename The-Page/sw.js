@@ -1,4 +1,4 @@
-const CACHE_NAME = 'emake-v12';
+const CACHE_NAME = 'emake-v13';
 const ASSETS = [
   '/',
   '/index.html',
