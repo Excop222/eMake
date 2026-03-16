@@ -3655,7 +3655,7 @@ function showForgotPassword() {
         btn.innerHTML = `<div class="spinner" style="width:18px;height:18px;border-width:2px;border-color:rgba(255,255,255,0.4);border-top-color:white;display:inline-block;vertical-align:middle;margin-right:8px;"></div> Sending...`;
 
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: 'https://emake.netlify.app'
+            redirectTo: 'https://emake.vercel.app'
         });
 
         if (error) {
