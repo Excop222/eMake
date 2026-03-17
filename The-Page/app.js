@@ -977,14 +977,47 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(firstPosts));
         </div>
     `;
 
-
-
-    wireEvents();
+wireEvents();
     setupVideoAutoplay();
     document.getElementById('quick-post-bar').onclick = () => router('upload');
     const postIds = firstPosts.map(p => p.id);
-   loadLikeCounts(postIds);
-   loadCommentCounts(postIds); 
+    loadLikeCounts(postIds);
+    loadCommentCounts(postIds);
+
+    // ← ADD HERE 👇
+    // Add floating invite button
+    const floatingInvite = document.createElement('button');
+    floatingInvite.onclick = showInviteScreen;
+    floatingInvite.style.cssText = `
+        position:fixed;
+        bottom:80px;
+        right:16px;
+        width:52px;
+        height:52px;
+        border-radius:50%;
+        background:#0866ff;
+        border:none;
+        cursor:pointer;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        box-shadow:0 4px 16px rgba(8,102,255,0.4);
+        z-index:500;
+    `;
+    floatingInvite.innerHTML = `
+        <svg width="22" height="22" viewBox="0 0 24 24"
+            fill="none" stroke="white" stroke-width="2.5"
+            stroke-linecap="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <line x1="19" y1="8" x2="19" y2="14"/>
+            <line x1="22" y1="11" x2="16" y2="11"/>
+        </svg>
+    `;
+    document.body.appendChild(floatingInvite);
+
+    
+     
 
     // Infinite scroll
     const sentinel = document.getElementById('load-more-sentinel');
@@ -3845,6 +3878,215 @@ async function sendPushNotification(userId, title, body) {
         console.log('Push send error:', err);
     }
 }
+
+
+// -------------------------
+// --- INVITE SCREEN ---
+// -------------------------
+
+function showInviteScreen() {
+    const existing = document.getElementById('invite-screen');
+    if (existing) existing.remove();
+
+    const screen = document.createElement('div');
+    screen.id = 'invite-screen';
+    screen.style.cssText = `
+        position:fixed;
+        top:0;left:0;
+        width:100%;height:100%;
+        background:white;
+        z-index:9999;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        padding:32px 24px;
+        box-sizing:border-box;
+        transform:translateY(100%);
+        transition:transform 0.4s ease;
+        font-family:Helvetica,Arial,sans-serif;
+    `;
+
+    screen.innerHTML = `
+        <!-- Close button -->
+        <button onclick="closeInviteScreen()"
+            style="position:absolute;top:20px;right:20px;
+            background:none;border:none;cursor:pointer;
+            padding:8px;">
+            <svg width="22" height="22" viewBox="0 0 24 24"
+                fill="none" stroke="#1c1e21" stroke-width="2.5"
+                stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
+
+        <!-- Logo -->
+        <div style="margin-bottom:28px;">
+            <svg xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 512 512" width="80" height="80">
+                <path d="M 380 235 C 372 188 344 152 304 132
+                    C 264 112 216 112 176 130 C 134 149 106 185
+                    98 228 C 89 274 103 321 132 353 C 162 387
+                    206 404 250 400 C 288 396 322 378 344 348
+                    C 358 330 364 308 360 286"
+                    fill="none" stroke="#0866ff"
+                    stroke-width="55" stroke-linecap="round"/>
+                <path d="M 96 250 L 362 235"
+                    fill="none" stroke="#0866ff"
+                    stroke-width="55" stroke-linecap="round"/>
+            </svg>
+        </div>
+
+        <!-- Heading -->
+        <h1 style="margin:0 0 12px;font-size:28px;
+            font-weight:800;color:#1c1e21;text-align:center;
+            line-height:1.2;">
+            Invite Your eFootball Friends! 🎮
+        </h1>
+
+        <!-- Subtext -->
+        <p style="margin:0 0 40px;font-size:15px;
+            color:#606770;text-align:center;
+            line-height:1.6;max-width:300px;">
+            Know someone who loves eFootball?
+            Invite them to join the community —
+            find friendlies, share highlights
+            and connect with players worldwide! ⚽🔥
+        </p>
+
+        <!-- Stats row -->
+        <div style="display:flex;gap:32px;
+            margin-bottom:48px;">
+            <div style="text-align:center;">
+                <p style="margin:0;font-size:22px;
+                    font-weight:800;color:#0866ff;">⚽</p>
+                <p style="margin:4px 0 0;font-size:12px;
+                    color:#aaa;">Friendlies</p>
+            </div>
+            <div style="text-align:center;">
+                <p style="margin:0;font-size:22px;
+                    font-weight:800;color:#0866ff;">💬</p>
+                <p style="margin:4px 0 0;font-size:12px;
+                    color:#aaa;">Messages</p>
+            </div>
+            <div style="text-align:center;">
+                <p style="margin:0;font-size:22px;
+                    font-weight:800;color:#0866ff;">🌍</p>
+                <p style="margin:4px 0 0;font-size:12px;
+                    color:#aaa;">Global</p>
+            </div>
+            <div style="text-align:center;">
+                <p style="margin:0;font-size:22px;
+                    font-weight:800;color:#0866ff;">🏆</p>
+                <p style="margin:4px 0 0;font-size:12px;
+                    color:#aaa;">Community</p>
+            </div>
+        </div>
+
+        <!-- Invite button -->
+        <button onclick="shareInvite()"
+            style="width:100%;max-width:320px;
+            padding:16px;border:none;border-radius:16px;
+            background:#0866ff;color:white;
+            font-size:17px;font-weight:700;
+            cursor:pointer;display:flex;
+            align-items:center;justify-content:center;
+            gap:10px;margin-bottom:16px;
+            box-shadow:0 4px 20px rgba(8,102,255,0.3);">
+            <svg width="20" height="20" viewBox="0 0 24 24"
+                fill="none" stroke="white" stroke-width="2">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                <polyline points="16 6 12 2 8 6"/>
+                <line x1="12" y1="2" x2="12" y2="15"/>
+            </svg>
+            Invite Friends
+        </button>
+
+        <!-- Copy link button -->
+        <button onclick="copyInviteLink()"
+            id="copy-link-btn"
+            style="width:100%;max-width:320px;
+            padding:16px;border:1.5px solid #e4e6ea;
+            border-radius:16px;background:white;
+            color:#1c1e21;font-size:15px;font-weight:700;
+            cursor:pointer;display:flex;
+            align-items:center;justify-content:center;gap:10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24"
+                fill="none" stroke="#606770" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13"
+                    rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1
+                    2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copy Link
+        </button>
+
+    `;
+
+    document.body.appendChild(screen);
+
+    // Animate in
+    requestAnimationFrame(() => {
+        screen.style.transform = 'translateY(0)';
+    });
+}
+
+window.closeInviteScreen = function() {
+    const screen = document.getElementById('invite-screen');
+    if (screen) {
+        screen.style.transform = 'translateY(100%)';
+        setTimeout(() => screen.remove(), 400);
+    }
+}
+
+window.shareInvite = async function() {
+    const shareData = {
+        title: 'eMake eFootball',
+        text: '🎮 Join me on eMake — the eFootball community app! Find friendlies, share highlights and connect with players worldwide! ⚽🔥',
+        url: 'https://emake.vercel.app'
+    };
+
+    try {
+        if (navigator.share) {
+            // Opens native share sheet!
+            // WhatsApp, Facebook, Instagram,
+            // TikTok all appear here! 🔥
+            await navigator.share(shareData);
+        } else {
+            // Fallback for desktop
+            copyInviteLink();
+        }
+    } catch (err) {
+        console.log('Share cancelled');
+    }
+}
+
+window.copyInviteLink = function() {
+    navigator.clipboard.writeText('https://emake.vercel.app');
+    const btn = document.getElementById('copy-link-btn');
+    if (btn) {
+        btn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24"
+                fill="none" stroke="#25a244" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span style="color:#25a244;">Copied!</span>
+        `;
+        setTimeout(() => {
+            btn.innerHTML = `
+                <svg width="18" height="18" viewBox="0 0 24 24"
+                    fill="none" stroke="#606770" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13"
+                        rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1
+                        2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy Link
+            `;
+        }, 2000);
+    }
+}
 //---- Zone 7: log out function and others-----------
 window.showProfile = showProfile;
 window.showEditProfile = showEditProfile;
@@ -3871,6 +4113,7 @@ window.showLogin = showLogin;
 window.togglePasswordVisibility = togglePasswordVisibility;
 window.requestPushPermission = requestPushPermission;
 window.sendPushNotification = sendPushNotification;
+window.showInviteScreen = showInviteScreen;
 
 
 async function init() {
